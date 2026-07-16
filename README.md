@@ -107,6 +107,25 @@ a BBMD is a network function, not a new object model:
 | Multi-State Output | 1 | Indigo | state 1..3; WRITABLE, commandable |
 | Network Port | 1 | Vermilion | The BACnet/IP port — **reports `BACnet_IP_Mode` = `bbmd`** |
 
+## Who serves what: application or stack?
+
+A BBMD is a network function, so its objects are the ordinary B-ASC set. For the
+commandable **Analog Output "Chartreuse"** - the one with the most moving parts:
+
+| Property | Served by | How |
+|---|---|---|
+| `Object_Identifier`, `Object_Type`, `Object_List`, `Property_List`, `Status_Flags` | **stack** | generated from the object you added |
+| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 24) |
+| `Present_Value` | **you (write) / stack (read)** | `SetPropertyReal` accepts a direct write; on read the **stack computes** it from the Priority_Array slots (highest non-null, or `Relinquish_Default`) |
+| `Priority_Array`, `Relinquish_Default` | **you** | the typed getters serve each slot; `GetPropertyBool` reports whether a slot is null |
+| `Object_Name` | **you** | `GetPropertyCharString` |
+| `Units` | **you** | `GetPropertyEnumerated` |
+| `Event_State` | **stack**, sort of | no alarming here, so it reads `normal(0)` as a datatype default - correct by coincidence, not computation |
+
+The Network Port additionally reports `BACnet_IP_Mode = bbmd` and, once you enable
+them (Trap #3), the three BBMD table properties - which the stack builds from the
+live BDT/FDT.
+
 ## Configure it for your site
 
 The peer addresses in `main.cpp` are **placeholders** from the documentation range
