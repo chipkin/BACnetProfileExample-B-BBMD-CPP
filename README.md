@@ -59,10 +59,16 @@ discovers that this port performs the BBMD function.
 
 Both cost real debugging time, and both fail in misleading ways:
 
-**1. A BDT entry address is 6 octets, not 4.** It is a BACnet/IP ("B/IP") address:
-the 4 IP octets followed by the **UDP port, high byte first** — the same layout the
-Network Port's `MAC_Address` uses. `AddBDTEntry` takes a length argument, which
-makes passing `4` look reasonable. It is not.
+**1. A BDT entry address is 6 octets, not 4 — and nothing checks this for you.**
+It is a BACnet/IP ("B/IP") address: the 4 IP octets followed by the **UDP port,
+high byte first** — the same layout the Network Port's `MAC_Address` uses.
+`AddBDTEntry` takes a length argument, but **the stack ignores it** and always
+copies 6 octets from your buffer; `AddBDTEntry` returns `true` even for a malformed
+entry. So the length argument protects nothing — the guarantee *you* must provide
+is that the buffer actually holds 6 octets (IP + port). Pass a 4-octet buffer and
+the stack reads 2 bytes of adjacent memory as the port and silently forwards
+broadcasts to that garbage address. The safe habit: always build the address with
+a helper like `MakeBip` below that lays out all 6 octets.
 
 **2. Populate the BDT *before* `SetBBMD`, and include this device's own entry.**
 Per Annex J a BBMD's BDT includes itself, and `SetBBMD` **requires** that entry to
@@ -100,8 +106,22 @@ if you run the example as-is — they are unreachable, so the stack simply logs 
 failed forwards rather than disturbing anyone's network.
 
 Edit `bdtSeeds` in `main.cpp` to list your real peer BBMDs — one entry per remote
-subnet. A real product would load this table from its configuration, and/or let a
-client write it over BACnet with `Write-Broadcast-Distribution-Table`.
+subnet. **You do not list this device in `bdtSeeds`:** the example computes this
+BBMD's own entry from its live interface and adds it as entry `[0]` automatically
+(Trap #2 above explains why the self-entry must exist).
+
+Each entry carries a **broadcast-distribution mask** alongside the IP + port, and
+it is a real per-entry decision:
+
+- `255.255.255.255` = **two-hop**: you unicast the broadcast to the peer BBMD and it
+  re-broadcasts onto its own subnet. This is the normal, router-friendly choice, and
+  what `bdtSeeds` uses for every peer. Use this unless you have a specific reason not to.
+- *the peer's real subnet mask* = **one-hop**: you send a directed broadcast straight
+  onto the peer's subnet. It needs the intervening routers to forward directed
+  broadcasts, which most are configured **not** to do — so this usually fails silently.
+
+A real product would load this table from its configuration, and/or let a client
+write it over BACnet with `Write-Broadcast-Distribution-Table`.
 
 ## Before you ship
 

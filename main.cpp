@@ -799,27 +799,42 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
                                 const bool useTimeDuration, const uint16_t timeDuration,
                                 uint32_t* errorCode) {
     if (deviceInstance != g_deviceInstance) {
+        // Not our device. Set *errorCode even here - see the note at the end of
+        // this function: a false return with *errorCode unset ships
+        // "Error Code = success(84)", which is meaningless on the wire.
+        *errorCode = ERROR_CODE_OPTIONAL_FUNCTIONALITY_NOT_SUPPORTED;
         return false;
     }
 
     // Check the password if this device requires one. A device with no configured
     // password (DCC_PASSWORD == "") accepts any request.
     //
-    // The compare is length-checked first (so memcmp never reads past the wire
-    // buffer, which is NOT null-terminated) and folds the byte comparison into a
-    // single accumulator so it does not short-circuit on the first wrong byte -
-    // a constant-time-style compare that avoids leaking how much of the password
-    // matched via timing. On a mismatch we set *errorCode = password-failure; the
-    // stack pairs that with Error Class = SECURITY (see clause 16.1.1.3.1).
+    // Compare by LENGTH FIRST, then bytes. The reason is not buffer safety - the
+    // stack hands us a null-terminated string - it is that a BACnet
+    // CharacterString may legitimately contain embedded NULs, and strcmp would
+    // silently compare only up to the first one. Never strcmp a wire string.
+    //
+    // On a mismatch we set *errorCode = password-failure, and the stack pairs
+    // that specific code with Error Class = SECURITY (clause 16.1.1.3.1).
+    //
+    // NOTE ON SECURITY, because this is a tutorial and the honest answer matters:
+    // a DCC password crosses the wire in PLAINTEXT. This is not a security
+    // boundary - it is a guard against accidents. Anyone who can time this
+    // compare can simply sniff the password instead. If you need real protection,
+    // use BACnet/SC. (Do not read the accumulator loop below as a constant-time
+    // compare: the printf on the reject path dwarfs any timing signal it removes.)
     const size_t requiredLength = strlen(DCC_PASSWORD);
     if (requiredLength > 0) {
-        unsigned diff = (password == NULL) ? 1u : (unsigned)(passwordLength ^ requiredLength);
-        if (password != NULL && passwordLength == requiredLength) {
+        bool matches = (password != NULL) && (passwordLength == requiredLength);
+        if (matches) {
             for (size_t i = 0; i < requiredLength; ++i) {
-                diff |= (unsigned)((unsigned char)password[i] ^ (unsigned char)DCC_PASSWORD[i]);
+                if (password[i] != DCC_PASSWORD[i]) {
+                    matches = false;
+                    break;
+                }
             }
         }
-        if (diff != 0) {
+        if (!matches) {
             printf("DeviceCommunicationControl: REJECTED (password failure)\n");
             *errorCode = ERROR_CODE_PASSWORD_FAILURE;
             return false;
@@ -839,11 +854,22 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
     } else {
         printf("DeviceCommunicationControl: %s (indefinitely)\n", action);
     }
-    // Return true to accept. We do NOT set *errorCode here: when a callback
-    // returns false without setting it, the stack supplies a sensible default
-    // error; we only write *errorCode to override that with a specific one (as the
-    // password path above does, and as the SetProperty* callbacks do for
-    // value-out-of-range).
+    // Accept. Nothing to write to *errorCode on the success path.
+    //
+    // IMPORTANT, AND IT IS NOT WHAT YOU WOULD GUESS: this callback MUST set
+    // *errorCode on EVERY `false` return. The DCC path has no default. The stack
+    // pre-initialises errorCode to BACnetErrorCode::success (which is 84, NOT 0)
+    // and then, on a false return, does:
+    //     if (errorCode == passwordFailure) -> Error Class SECURITY
+    //     else                              -> Error Class SERVICES, code = errorCode
+    // So returning false without setting *errorCode puts the literal nonsense
+    // "Error Class = SERVICES, Error Code = success(84)" on the wire.
+    //
+    // This differs from the SetProperty* callbacks, which DO have a sensible
+    // fallback (writeAccessDenied) - so do not carry the habit across.
+    // (The stack's own comment at that site says "otherwise assume
+    // passwordFailure"; the code does not do that. Trust the code, not the
+    // comment - including this one: go read it.)
     return true;
 }
 
@@ -1090,12 +1116,15 @@ int main(int argc, char** argv) {
     //
     // A BDT entry's address is a 6-octet BACnet/IP ("B/IP") address: the 4 IP
     // octets followed by the 2-octet UDP port, most-significant byte first - NOT
-    // the bare 4-octet IP. The AddBDTEntry length argument makes 4 look like a
-    // reasonable thing to pass; it is not, and passing 4 fails in a way that only
-    // shows up later as "Broadcast Distribution Table is not configured with host
-    // device entry", because the stack builds the host's key as IP+port and then
-    // finds no entry that matches. Same 6-octet layout the Network Port's
-    // MAC_Address uses.
+    // the bare 4-octet IP. Same 6-octet layout the Network Port's MAC_Address uses.
+    //
+    // WARNING: the AddBDTEntry length argument does NOT protect you. The stack
+    // ignores it and always copies 6 octets from your buffer, and AddBDTEntry
+    // returns true even for a malformed entry - so the error check below cannot
+    // catch a bad address. What matters is that the BUFFER holds 6 octets. Pass a
+    // 4-octet buffer and the stack reads 2 bytes of adjacent memory as the port
+    // and forwards broadcasts to that garbage address, silently. Always build the
+    // 6-octet address with MakeBip below rather than passing a raw IP + a length.
     struct BipAddress { uint8_t octet[6]; };
     struct MakeBip {
         static BipAddress From(const uint8_t ip[4], uint16_t udpPort) {
@@ -1149,6 +1178,27 @@ int main(int argc, char** argv) {
     //    specific BACnet/IP one. This must come AFTER the BDT is populated.
     if (!BACnetStack_SetBBMD(g_deviceInstance, NETWORK_PORT_INSTANCE)) {
         printf("Error: Failed to make Network Port 1 (Vermilion) a BBMD.\n");
+        return 1;
+    }
+
+    // Enable the three BBMD table properties on the Network Port so a client can
+    // ReadProperty them. These are OPTIONAL on a Network Port (required only when
+    // BACnet_IP_Mode is bbmd), and SetBBMD does NOT enable them for you - so
+    // without these calls, reading BBMD_Broadcast_Distribution_Table returns
+    // unknown-property even though the BBMD is fully functional. This is the exact
+    // "serving is not enough, you must enable" trap the Description property teaches
+    // above. The property IDs are not in the shared example constants, so name them
+    // here from the stack's BACnetPropertyIdentifier enum.
+    static const uint32_t PROP_BBMD_ACCEPT_FD_REGISTRATIONS = 413;
+    static const uint32_t PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE = 414;
+    static const uint32_t PROP_BBMD_FOREIGN_DEVICE_TABLE = 415;
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_FOREIGN_DEVICE_TABLE, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_ACCEPT_FD_REGISTRATIONS, true)) {
+        printf("Error: Failed to enable the BBMD table properties on Network Port 1.\n");
         return 1;
     }
 
