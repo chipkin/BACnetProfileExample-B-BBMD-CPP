@@ -5,7 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2026-07-15
+## [1.0.0] - unreleased
+
+> Not tagged yet: this repository has no tags at all. `release.yml` publishes binaries on a `v*.*.*`
+> tag, so until that tag exists this section describes what is on the
+> branch, not what shipped.
 
 First release: a complete B-BBMD (BACnet Broadcast Management Device) tutorial.
 
@@ -58,4 +62,4 @@ First release: a complete B-BBMD (BACnet Broadcast Management Device) tutorial.
   registers all eight objects, configures the BBMD, reads its BDT back with itself
   as entry [0], and broadcasts its I-Am.
 
-[1.0.0]: https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP/releases/tag/v1.0.0
+[1.0.0]: https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP/commits/llm-auto-2026-july
