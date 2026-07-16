@@ -256,23 +256,39 @@ static bool ReadPrioritySlot(const Commandable* c, uint32_t propertyIdentifier,
 //
 // The stack calls these when a client reads a property. For each data type the
 // stack uses a separate callback. We return true (and fill *value) when we
-// recognise the (object, property) pair, and false otherwise so the stack
-// answers with the proper BACnet error. Note what false does NOT mean: it is not
-// "the read failed", and it is not "the value is null". It means "not mine" -
-// you are declining to answer, and the stack turns that into a BACnet error.
+// recognise the (object, property) pair, and false otherwise.
+//
+// WHAT false ACTUALLY DOES - and this is the most important paragraph in the
+// file, because an earlier version of this comment got it backwards. Returning
+// false does NOT reliably produce a BACnet error. The stack only errors for the
+// handful of properties it refuses to invent (BACnetBusinessLogic.cpp: the
+// valueShouldBeInitialized switch) - Present_Value, Number_Of_States,
+// Relinquish_Default, Local_Date, Local_Time, and a Network Port's APDU_Length.
+// For EVERYTHING ELSE, a false return falls through to GetDefaultPropertyValue()
+// (BACnetDBDevice.cpp) and the stack SILENTLY SUBSTITUTES a default:
+//     Object_Name -> the literal string "undefined"
+//     Units       -> no-units (95)
+//     otherwise   -> a datatype zero-value
 //
 // ADDING AN OBJECT? READ THIS FIRST.
-// These callbacks are not uniformly strict, and the difference bites:
+// The consequence is the opposite of reassuring. These callbacks are not
+// uniformly strict:
 //   - GetPropertyReal / GetPropertyEnumerated / GetPropertyUnsignedInteger match
 //     on object type AND INSTANCE (directly, or via GetCommandable(), which
 //     looks up the exact type+instance pair). A new instance falls through every
-//     one of those checks and gets an error.
+//     one of those checks.
 //   - GetPropertyBool serves Out_Of_Service on object TYPE ONLY, so a new
 //     instance of an existing type gets Out_Of_Service for free.
-// So a half-added object answers Out_Of_Service but errors on Present_Value and
-// Units - i.e. it looks alive on a scan and is non-conformant. When you add an
-// instance, walk EVERY callback below, then read back every required property of
-// the new object.
+// So a half-added object does NOT fail loudly. Its Present_Value errors (that
+// one is in the list above) - but its Object_Name reads back as "undefined" and
+// its Units as no-units, with no error at all. Add two objects that way and BOTH
+// report Object_Name "undefined": duplicate object names within one device, which
+// is a spec violation and a hard BTL failure, and which every scan tool will show
+// you as a healthy object. The device looks fine and is non-conformant.
+//
+// So: when you add an instance, walk EVERY callback below, then read back every
+// required property of the new object and DIFF IT against the existing one. Do
+// not trust "it scanned OK" - that is exactly the failure mode.
 // -----------------------------------------------------------------------------
 
 // REAL (floating point) - the Analog Input's Present_Value.
@@ -941,6 +957,21 @@ int main(int argc, char** argv) {
     // already enabled; our Get* callbacks just supply their values. Only
     // OPTIONAL properties need SetPropertyEnabled. State_Text is optional on a
     // Multi-State Input, so we enable it here (and serve it in GetPropertyCharString).
+    //
+    // The Device's Description is optional too, and it is an easy one to get
+    // wrong: serving it from a Get callback is NOT enough. The stack checks
+    // IsPropertyEnabled BEFORE it ever reaches the callbacks, and for an optional
+    // property that check falls back to "is it required?" - which is false. So a
+    // Description branch in the callback without this enable is DEAD CODE, and
+    // the client reads back Error: unknown-property. (This example shipped
+    // exactly that bug; it was caught by a reviewer tracing the stack source, not
+    // by running it - a plausible-looking callback branch that never executes.)
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_DEVICE,
+                                        g_deviceInstance, PROPERTY_IDENTIFIER_DESCRIPTION, true)) {
+        printf("Error: Failed to enable Description on the Device object.\n");
+        return 1;
+    }
+
     if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_MULTI_STATE_INPUT,
                                         MULTI_STATE_INPUT_INSTANCE, PROPERTY_IDENTIFIER_STATE_TEXT, true)) {
         printf("Error: Failed to enable State_Text on Multi-State Input 1 (Hot Pink).\n");
@@ -949,18 +980,37 @@ int main(int argc, char** argv) {
 
     // --- Make the output objects commandable --------------------------------
     // A commandable object's Present_Value is resolved from a 16-slot
-    // Priority_Array plus a Relinquish_Default. For the stack to treat the object
-    // that way - and to accept WriteProperty into it - three properties must be
-    // turned on per object: Present_Value WRITABLE, and Priority_Array +
-    // Relinquish_Default ENABLED. (Present_Value, Priority_Array, and
-    // Relinquish_Default are all required properties, so the stack already
-    // *enabled* them on AddObject; here we additionally mark Present_Value
-    // writable, which is what flips the object into commandable mode.)
-    // Carry the INSTANCE alongside the type. This loop used to hardcode a literal
-    // 1 for the instance while every other line in the file used the named
-    // constants - so changing ANALOG_OUTPUT_INSTANCE would silently leave this
-    // loop behind, and the object would start, answer Who-Is, and reject every
-    // WriteProperty. Exactly the failure the comment above warns about.
+    // Priority_Array plus a Relinquish_Default: a WriteProperty sets a slot,
+    // writing NULL relinquishes it, and the highest-priority non-null slot (or
+    // Relinquish_Default) wins.
+    //
+    // HONEST NOTE, because an earlier version of this comment was wrong and a
+    // reader would have found out the hard way: for ANALOG/BINARY/MULTI-STATE
+    // OUTPUT the three calls below are effectively NO-OPS. They reproduce the
+    // stack's own defaults. Verified in the stack source:
+    //   - Present_Value on an Analog Output already defaults to required AND
+    //     writable (BACnetDBPropertyProfile.cpp: presentValue -> SetProperty(
+    //     true, true, Real)), and Priority_Array / Relinquish_Default default to
+    //     required - so AddObject already enabled all three; and
+    //   - IsPropertyCommandable() (BACnetBusinessLogic.cpp) returns true for
+    //     analogOutput / binaryOutput / multiStateOutput Present_Value
+    //     UNCONDITIONALLY - it consults no enable at all.
+    // Delete this loop and these objects still accept WriteProperty. Nothing
+    // here "flips the object into commandable mode"; the stack already did.
+    //
+    // So why keep it? Because it states the commandable contract in one visible
+    // place, and because it becomes LOAD-BEARING the moment you copy this pattern
+    // to an optionally-commandable type - Analog Value, Binary Value, Multi-State
+    // Value. There Priority_Array / Relinquish_Default default to OPTIONAL (not
+    // enabled), and IsPropertyCommandable() explicitly requires BOTH to be
+    // enabled before it will treat the object as commandable. Omit these calls on
+    // an Analog Value and it silently is not commandable.
+    //
+    // Carry the INSTANCE alongside the type: this loop used to hardcode a literal
+    // 1 while every other line in the file used the named constants. On these
+    // output types that mismatch is benign (see above) - but it is exactly the
+    // drift that IS fatal on a Value type, and a reader copying it would inherit
+    // the bug without the benignity. Say what you mean.
     struct CommandableObject { uint16_t type; uint32_t instance; };
     const CommandableObject outputs[] = {
         { OBJECT_TYPE_ANALOG_OUTPUT,      ANALOG_OUTPUT_INSTANCE },
