@@ -103,6 +103,33 @@ Edit `bdtSeeds` in `main.cpp` to list your real peer BBMDs — one entry per rem
 subnet. A real product would load this table from its configuration, and/or let a
 client write it over BACnet with `Write-Broadcast-Distribution-Table`.
 
+## Before you ship
+
+This example is a tutorial, and it identifies itself as one. Everything in this
+table is read by clients and shown to the operator in **every discovery tool on
+the network**. Left as-is, your product appears on a real site announcing itself
+as a Chipkin demo. None of it is cosmetic.
+
+| Constant (`main.cpp`) | Ships as | Change it to |
+|---|---|---|
+| `VENDOR_IDENTIFIER` | `389` (Chipkin) | **Your** company's vendor ID. Assigned by ASHRAE, free: <https://bacnet.org/assigned-vendor-ids/> |
+| `VENDOR_NAME` | `Chipkin Automation Systems` | Your company name - must match the vendor ID above. |
+| `DEVICE_NAME` | `"Rainbow"` | Your device's `Object_Name`. **Must be unique across the BACnet internetwork** - see the note below. |
+| `MODEL_NAME` | `CAS BACnet Stack Example - B-BBMD` | Your model designation - what a building operator reads to identify your device. |
+| `DEVICE_DESCRIPTION` | a description of *this example* | What your device actually is. |
+| `FIRMWARE_REVISION` / `APPLICATION_SOFTWARE_VERSION` | `1.0.0` | Your real versions - wire them to your build. |
+| `DCC_PASSWORD` | `""` (no password) | Set your device's secret, or leave empty to accept any DeviceCommunicationControl. It crosses the wire in **plaintext** - a guard against accidents, not a security boundary. |
+| Device instance | `389020` (`--deviceID` overrides) | Must be unique on the internetwork. BACnet requires this to be configurable; keep it so. |
+
+> **`Object_Name` uniqueness is the one that will bite you.** The device instance
+> is runtime-configurable via `--deviceID`, but `DEVICE_NAME` is a compile-time
+> constant. Ship two units and configure their instances correctly, and **both
+> still announce `Object_Name "Rainbow"`** - a spec violation. In a real product,
+> `Object_Name` must be per-unit configurable too (serial number, DIP switches,
+> a config file, or a `--deviceName` argument).
+
+`main.cpp` marks this block with a `CHANGE ALL OF THIS BEFORE YOU SHIP` banner.
+
 ## Build
 
 ```bash
