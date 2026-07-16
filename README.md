@@ -113,7 +113,7 @@ cmake --build build --config Release
 ```
 
 If you cloned without `--recursive`, run `git submodule update --init --recursive`
-first. The first build compiles the whole CAS BACnet Stack (~460 source files) and
+first. The first build compiles the whole CAS BACnet Stack (~600 source files) and
 takes a few minutes; later incremental builds are fast.
 
 ## Run
