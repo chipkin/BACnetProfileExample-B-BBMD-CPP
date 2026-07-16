@@ -55,9 +55,9 @@ and removes FDT entries as foreign devices register and expire. The application'
 only other job is reporting `BACnet_IP_Mode` = `bbmd` — which is how a client
 discovers that this port performs the BBMD function.
 
-## Two traps worth knowing before you copy this
+## Three traps worth knowing before you copy this
 
-Both cost real debugging time, and both fail in misleading ways:
+All three cost real debugging time and fail in misleading ways:
 
 **1. A BDT entry address is 6 octets, not 4 — and nothing checks this for you.**
 It is a BACnet/IP ("B/IP") address: the 4 IP octets followed by the **UDP port,
@@ -81,6 +81,15 @@ trap wrong and you get the same unhelpful pair of errors:
 Error: Broadcast Distribution Table is not configured with host device entry
 Error: Failed to UpdateHostBDTIndex, aborting BBMD setup
 ```
+
+**3. `SetBBMD` does not make the BBMD tables readable — you must enable them.**
+The `BBMD_Broadcast_Distribution_Table`, `BBMD_Foreign_Device_Table`, and
+`BBMD_Accept_FD_Registrations` properties on the Network Port are *optional*, so
+they are not enabled automatically and `SetBBMD` does not enable them. Without an
+explicit `SetPropertyEnabled` for each, a client's `ReadProperty` of them returns
+`unknown-property` even though the BBMD is fully functional — the same "serving a
+value is not enough, you must enable the property" trap the Description property
+hits. This example enables all three right after `SetBBMD`.
 
 ## Objects
 
@@ -185,6 +194,11 @@ FYI: this device is a BBMD. Broadcast Distribution Table:
       (the Foreign Device Table starts empty and fills in as remote
        devices send Register-Foreign-Device to this BBMD.)
 ```
+
+Entry `[0]`'s mask is this device's own subnet mask (`255.255.255.0` here), not
+`255.255.255.255` like the peers. That is fine and intentional: a BBMD never
+forwards a broadcast to *itself*, so the self-entry's mask is never used — only
+the peer entries' masks matter for forwarding.
 
 ## Try it
 

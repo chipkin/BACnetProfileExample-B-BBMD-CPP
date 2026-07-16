@@ -35,6 +35,8 @@ First release: a complete B-BBMD (BACnet Broadcast Management Device) tutorial.
   TEST-NET-1), deliberately unreachable so the example cannot disturb a real
   network if run as-is; `bdtSeeds` in `main.cpp` is the one place to edit.
 - `README.md` (human tutorial), `AGENTS.md` (agent guidance), `LICENSE` (CC0-1.0),
+  the three BBMD Network Port table properties enabled explicitly (SetBBMD
+  does not do it, so ReadProperty would otherwise return unknown-property), and
   the vendored `common/` helper (v1.3.0), and a CMake build that compiles the CAS
   BACnet Stack from source.
 

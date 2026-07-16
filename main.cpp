@@ -1188,7 +1188,11 @@ int main(int argc, char** argv) {
     // unknown-property even though the BBMD is fully functional. This is the exact
     // "serving is not enough, you must enable" trap the Description property teaches
     // above. The property IDs are not in the shared example constants, so name them
-    // here from the stack's BACnetPropertyIdentifier enum.
+    // here from the stack's BACnetPropertyIdentifier enum - keep these in sync with
+    // that enum (bbmdAcceptFdRegistrations/bbmdBroadcastDistributionTable/
+    // bbmdForeignDeviceTable); a stack renumber would not be caught at compile time.
+    // Note: reading BBMD_Accept_FD_Registrations always returns true here - the
+    // stack generates it as a constant, it does not reflect a configurable setting.
     static const uint32_t PROP_BBMD_ACCEPT_FD_REGISTRATIONS = 413;
     static const uint32_t PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE = 414;
     static const uint32_t PROP_BBMD_FOREIGN_DEVICE_TABLE = 415;
