@@ -194,7 +194,7 @@ from a device on subnet B.
 |---|---|
 | Example version | 1.0.0 |
 | `common/` helper | 1.3.0 |
-| CAS BACnet Stack | 6.0.0.0 (submodule pinned at the series-wide commit) |
+| CAS BACnet Stack | 6.0.0.0 (submodule pinned at the 6.x series commit) |
 | Protocol_Revision | 24 (the stack default — the highest it supports) |
 | Verified on | Windows (MSVC 2022, C++17) |
 
