@@ -31,11 +31,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: BACnetExampleBSS-windows-x64
-            exe: build/Release/BACnetExampleBSS.exe
+            artifact: BACnetExampleBBBMD-windows-x64
+            exe: build/Release/BACnetExampleBBBMD.exe
           - os: ubuntu-latest
-            artifact: BACnetExampleBSS-linux-x64
-            exe: build/BACnetExampleBSS
+            artifact: BACnetExampleBBBMD-linux-x64
+            exe: build/BACnetExampleBBBMD
     steps:
       # The CAS BACnet Stack submodule has deeply-nested paths (googletest
       # packages) that exceed Windows' 260-char MAX_PATH; enable long paths so
