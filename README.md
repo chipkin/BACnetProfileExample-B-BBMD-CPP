@@ -189,7 +189,35 @@ cmake --build build --config Release
 
 If you cloned without `--recursive`, run `git submodule update --init --recursive`
 first. The first build compiles the whole CAS BACnet Stack (~600 source files) and
-takes a few minutes; later incremental builds are fast.
+takes a few minutes; later incremental builds are fast. Add `--parallel` to cut that
+down substantially:
+
+```bash
+cmake --build build --config Release --parallel
+```
+
+### Link modes
+
+This example links the stack through the `CASBACnetStack::Adapter` CMake target
+(`submodules/cas-bacnet-stack/adapters/cpp`). `CAS_BACNET_STACK_LINK` picks how:
+
+```bash
+cmake -B build -S .                                   # SOURCE (default) - compiles the stack in
+cmake -B build -S . -D CAS_BACNET_STACK_LINK=STATIC    # link a prebuilt .lib/.a
+cmake -B build -S . -D CAS_BACNET_STACK_LINK=DLL       # load a prebuilt .dll/.so at runtime
+```
+
+**Application code is identical in every mode.** `main.cpp` and `common/` call
+`BACnetStack_AddDevice(...)` and friends by the exact export name; switching modes changes
+only the CMake flag, never a line of your code. All three modes require calling
+`LoadBACnetFunctions()` once at the top of `main()` before any other `BACnetStack_*` call - in
+`DLL` mode that is the step that binds the symbols, and in every mode it runs a version
+handshake. If it fails, `CASBACnetStackAdapter_LastError()` says why and the program exits
+with a message rather than crashing.
+
+`STATIC` and `DLL` each need their library built first; `SOURCE` needs nothing extra, which is
+why it is the default and what the published release binaries are built with.
+
 
 ## Run
 
@@ -246,8 +274,8 @@ from a device on subnet B.
 | | |
 |---|---|
 | Example version | 1.0.0 |
-| `common/` helper | 1.3.0 |
-| CAS BACnet Stack | 6.0.0.0 (submodule pinned at the 6.x series commit) |
+| `common/` helper | 1.5.1 |
+| CAS BACnet Stack | 6.0.0.0 (submodule pinned at `6.x-TestTool` @ `756371c1`) |
 | Protocol_Revision | 24 (the stack default — the highest it supports) |
 | Verified on | Windows (MSVC 2022, C++17) |
 

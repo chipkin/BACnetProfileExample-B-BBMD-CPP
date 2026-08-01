@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Links the CAS BACnet Stack through the `CASBACnetStack::Adapter` CMake target
+  instead of compiling its `source/*.cpp` into this project directly.** `main.cpp`
+  and `common/CASExampleHelper.cpp` now include `CASBACnetStackAdapter.h` and call
+  `LoadBACnetFunctions()` once at the top of `main()`; **every `BACnetStack_*` call
+  site is unchanged** — the adapter exposes the same export names in every link
+  mode. `CAS_BACNET_STACK_LINK` (`SOURCE` default, or `STATIC`/`DLL`) now picks the
+  link mode, so switching is a CMake flag rather than a code change. See the
+  README's new "Link modes" section.
+  - Stack pinned to `6.x-TestTool` @ `756371c1`, which carries the adapter
+    (cas-bacnet-stack PRs #267 and #268).
+  - `common/` bumped to **v1.5.1** (see `common/CHANGELOG.md`), byte-identical to
+    the other migrated examples. The `LoadBACnetFunctions()` requirement is a
+    contract change shared by every example in the series.
+  - Release CI now passes `-DCAS_BACNET_STACK_LINK=SOURCE` **explicitly** and
+    asserts it back out of `CMakeCache.txt`, so a published artifact stays a
+    single self-contained executable even if the CMake default ever moves.
+  - README: added parallel-build guidance for the ~600-file first compile, and
+    refreshed the Versions table.
+
 ## [1.0.0] - unreleased
 
 > Not tagged yet: this repository has no tags at all. `release.yml` publishes binaries on a `v*.*.*`

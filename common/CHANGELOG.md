@@ -12,6 +12,38 @@ entry here, and must then be re-copied into **every** example in the series.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the folder adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-07-31
+
+### Fixed
+
+- **`--help` printed the version banner twice.** The handler printed it, then called
+  `PrintHelp()` which printed it again. The interactive key list is now a separate
+  internal helper, so `--help` prints banner → usage → keys once each. `PrintHelp()`
+  (what the `h` key shows) is unchanged.
+- **`common/README.md` was stale and taught a `main()` skeleton that no longer works.**
+  It still said the stack "is compiled from source… there is no DLL to load at runtime",
+  and its snippet omitted `LoadBACnetFunctions()` — which 1.5.0 made mandatory in every
+  link mode. Anyone using that snippet as their starting point wrote the exact bug 1.5.0
+  was written to prevent (in DLL mode, a null-pointer call). The README now leads with the
+  load call and explains why it is not optional.
+
+## [1.5.0] - 2026-07-31
+
+### Changed
+
+- **`CASExampleHelper.cpp` now includes `CASBACnetStackAdapter.h` instead of
+  `CASBACnetStackDLL.h`.** No functional change to `common/`'s own code — it still
+  calls `BACnetStack_*` directly, same as before. This is a **contract change for
+  every consuming example's `main()`**: it must call `LoadBACnetFunctions()` once,
+  before any `BACnetStack_*` call (including before `CASExampleHelper::PrintVersion`
+  / `HandleHelpAndVersionArgs`, which call `BACnetStack_GetAPIMajorVersion()` etc.),
+  in every link mode. In source/static-lib mode this was previously a no-op (the
+  functions are always callable — "linked directly, there is no load step," per the
+  old header comment); the adapter's DLL mode makes that no longer universally true,
+  so the load step is now mandatory everywhere for one call to work in all three
+  modes. Each example in the series adopts this as it re-syncs to 1.5.x, and its
+  `main()` must gain the `LoadBACnetFunctions()` call at that point.
+
 ## [1.4.0] - 2026-07-18
 
 ### Added
