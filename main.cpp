@@ -262,14 +262,13 @@ static bool ReadPrioritySlot(const Commandable* c, uint32_t propertyIdentifier,
 // stack uses a separate callback. We return true (and fill *value) when we
 // recognise the (object, property) pair, and false otherwise.
 //
-// WHAT false ACTUALLY DOES - and this is the most important paragraph in the
-// file, because an earlier version of this comment got it backwards. Returning
-// false does NOT reliably produce a BACnet error. The stack only errors for the
-// handful of properties it refuses to invent (BACnetBusinessLogic.cpp: the
-// valueShouldBeInitialized switch) - Present_Value, Number_Of_States,
-// Relinquish_Default, Local_Date, Local_Time, and a Network Port's APDU_Length.
-// For EVERYTHING ELSE, a false return falls through to GetDefaultPropertyValue()
-// (BACnetDBDevice.cpp) and the stack SILENTLY SUBSTITUTES a default:
+// WHAT false ACTUALLY DOES - the most important paragraph in this file, and the
+// opposite of what most people assume. Returning false does NOT reliably produce
+// a BACnet error. The stack only errors for the handful of properties it refuses
+// to invent: Present_Value, Number_Of_States, Relinquish_Default, Local_Date,
+// Local_Time, and a Network Port's APDU_Length.
+// For EVERYTHING ELSE, a false return means the stack SILENTLY SUBSTITUTES a
+// default:
 //     Object_Name -> the literal string "undefined"
 //     Units       -> no-units (95)
 //     otherwise   -> a datatype zero-value
@@ -869,9 +868,6 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
     //
     // This differs from the SetProperty* callbacks, which DO have a sensible
     // fallback (writeAccessDenied) - so do not carry the habit across.
-    // (The stack's own comment at that site says "otherwise assume
-    // passwordFailure"; the code does not do that. Trust the code, not the
-    // comment - including this one: go read it.)
     return true;
 }
 
@@ -1014,9 +1010,9 @@ int main(int argc, char** argv) {
     // Every BACnet device (Protocol_Revision 17+) must have at least one Network
     // Port object describing the port it talks on. This one is the BACnet/IP
     // application port; it is the lowest layer, so its reference port is "none".
-    // v6: the old AddNetworkPortObject was removed - use the WithNetworkNumber
-    // form. networkNumber 0 + quality "unknown" reproduce the old behaviour (a
-    // local port that has not learned its network number).
+    // networkNumber 0 with quality "unknown" describes a local port that has not
+    // learned its network number - the right answer for a device that is not a
+    // router and has not been told one.
     if (!BACnetStack_AddNetworkPortObjectWithNetworkNumber(
             g_deviceInstance, NETWORK_PORT_INSTANCE,
             NETWORK_PORT_NETWORK_TYPE_IPV4,
@@ -1063,9 +1059,8 @@ int main(int argc, char** argv) {
     // writing NULL relinquishes it, and the highest-priority non-null slot (or
     // Relinquish_Default) wins.
     //
-    // HONEST NOTE, because an earlier version of this comment was wrong and a
-    // reader would have found out the hard way: for ANALOG/BINARY/MULTI-STATE
-    // OUTPUT the three calls below are effectively NO-OPS. They reproduce the
+    // WORTH KNOWING BEFORE YOU COPY THIS: for ANALOG/BINARY/MULTI-STATE OUTPUT
+    // the three calls below are effectively NO-OPS. They reproduce the
     // stack's own defaults. Verified in the stack source:
     //   - Present_Value on an Analog Output already defaults to required AND
     //     writable (BACnetDBPropertyProfile.cpp: presentValue -> SetProperty(
@@ -1085,11 +1080,10 @@ int main(int argc, char** argv) {
     // enabled before it will treat the object as commandable. Omit these calls on
     // an Analog Value and it silently is not commandable.
     //
-    // Carry the INSTANCE alongside the type: this loop used to hardcode a literal
-    // 1 while every other line in the file used the named constants. On these
-    // output types that mismatch is benign (see above) - but it is exactly the
-    // drift that IS fatal on a Value type, and a reader copying it would inherit
-    // the bug without the benignity. Say what you mean.
+    // Carry the INSTANCE alongside the type rather than assuming instance 1. On
+    // these output types the distinction is benign (see above) - but it is fatal
+    // on a Value type, where the enable must land on the exact object you mean.
+    // Say what you mean, so the pattern stays correct when it is copied.
     struct CommandableObject { uint16_t type; uint32_t instance; };
     const CommandableObject outputs[] = {
         { OBJECT_TYPE_ANALOG_OUTPUT,      ANALOG_OUTPUT_INSTANCE },
