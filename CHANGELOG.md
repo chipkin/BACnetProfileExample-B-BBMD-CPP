@@ -48,6 +48,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads back its own seeded 3-entry Broadcast Distribution Table (this
   device + the two documentation-range placeholder peers).
 - `--help` / `--version` exit 0; `--deviceID` overrides the announced instance.
+- **Wire-level verification** (raw BVLL Annex J requests against the running
+  binary; no full BACnet client was available in this environment, so this
+  used a scratch UDP harness rather than the CAS BACnet Explorer):
+  - **Read-Broadcast-Distribution-Table** (BVLC 0x02): `Read-BDT-Ack` returns
+    exactly the 3 seeded entries.
+  - **Register-Foreign-Device** (BVLC 0x05) from a second UDP endpoint acting
+    as a second host: `BVLC-Result` code 0 (success), and the endpoint then
+    appears in **Read-Foreign-Device-Table** (BVLC 0x06)'s `Read-FDT-Ack`
+    with its TTL.
+  - **Distribute-Broadcast-To-Network** (BVLC 0x09) from the registered
+    foreign device: the BBMD's forwarding path (`BACnetBBMD::ProcessOutgoingMessageBBMD`)
+    visibly engages and builds a 12-byte `Forwarded-NPDU`, but this local
+    loopback test could not confirm delivery - the stack logs the same
+    "Error occurred while sending the encoded packet" already seen (and
+    expected) for the two unreachable documentation-range placeholder BDT
+    peers, and this scratch harness could not distinguish a genuine send
+    failure from that expected unreachable-peer path. **Unverified**: use a
+    real BACnet client / second host on a real subnet to confirm forwarding
+    end-to-end.
+  - `BACnet_IP_Mode = bbmd` was not re-verified with a wire ReadProperty
+    (needs full APDU encoding, not just BVLL); confirmed by code inspection
+    only (`GetPropertyEnumerated` returns `BACNET_IP_MODE_BBMD` for that
+    property) plus the fact that `BACnetStack_SetBBMD` succeeded at start-up.
 - The README's "Three traps" (6-octet BDT address, BDT-before-`SetBBMD` with
   the self-entry, and enabling the BBMD table properties) were re-tested
   against the new signatures and still hold exactly as written.
