@@ -512,10 +512,10 @@ run (`metrics-windows.json` / `metrics-linux.json`), both built with
 <!-- METRICS -->
 | Platform | Binary | Size | SHA-256 (prefix) | Start-up to `ready` | Stack commit | Link mode | Compiler |
 |---|---|---|---|---|---|---|---|
-| Windows x64 (windows-2022) | `BACnetExampleBBBMD.exe` | not yet released | not yet released | not yet released | not yet released | STATIC | not yet released |
-| Linux x64 (ubuntu-latest) | `BACnetExampleBBBMD` | not yet released | not yet released | not yet released | not yet released | STATIC | not yet released |
+| Windows x64 (windows-2022) | `BACnetExampleBBBMD.exe` | 3,255,808 bytes (~3.1 MiB) | `67b6ea3351d14852` | 69 ms | `abd4cee1` | STATIC | Visual Studio 17 2022 |
+| Linux x64 (ubuntu-latest) | `BACnetExampleBBBMD` | 44,352 bytes (~43 KiB) | `2f7f83e5044b5901` | 108 ms | `abd4cee1` | STATIC | `/usr/bin/c++` |
 
-Not yet released.
+From release [v1.1.0](https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP/releases/tag/v1.1.0) (`metrics-windows.json` / `metrics-linux.json`).
 
 ## License
 
