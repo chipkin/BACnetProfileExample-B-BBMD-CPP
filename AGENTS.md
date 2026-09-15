@@ -24,14 +24,18 @@ This repository is self-contained:
 
 ## Build
 
+This example links the CAS BACnet Stack as a prebuilt **STATIC** library.
+
 ```bash
 git submodule update --init --recursive   # once, if not cloned with --recursive
-cmake -B build -S .
+tools/build-stack-static.sh BACnetProfileExample-B-BBMD-CPP   # from the series root
+cmake -B build -S . -DCAS_BACNET_STACK_LINK=STATIC
 cmake --build build --config Release
 ```
 
-The first build compiles the whole stack (~600 files) and takes a few minutes;
-later incremental builds are fast. Use `-D CAS_STACK_DIR=...` only if your stack
+The library build compiles the whole stack (~600 files) once and takes a few
+minutes; the example itself then builds in seconds against it, and later
+incremental builds are fast. Use `-D CAS_STACK_DIR=...` only if your stack
 lives outside the bundled submodule.
 
 ## Run
@@ -85,6 +89,11 @@ Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1
 Also: do not probe `GetBDTEntry` upwards until it fails. An out-of-range index is
 a genuine error to the stack and it logs one, so a probe loop prints a spurious
 error at the end of an otherwise healthy start-up. Iterate a known count.
+
+`GetBDTEntry` returns `uint32_t` (bytes written; `0` = failure), not `bool` -
+compare the result to `0` explicitly. Negating it with `!` still gives the right
+answer, but forces the `uint32_t` through a `bool` conversion that the strict
+build (`/W4`) flags as `C4800`.
 
 ## How to verify a change
 

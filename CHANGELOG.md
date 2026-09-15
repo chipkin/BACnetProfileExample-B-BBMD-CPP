@@ -5,28 +5,52 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - unreleased
 
 ### Changed
 
-- **Links the CAS BACnet Stack through the `CASBACnetStack::Adapter` CMake target
-  instead of compiling its `source/*.cpp` into this project directly.** `main.cpp`
-  and `common/CASExampleHelper.cpp` now include `CASBACnetStackAdapter.h` and call
-  `LoadBACnetFunctions()` once at the top of `main()`; **every `BACnetStack_*` call
-  site is unchanged** — the adapter exposes the same export names in every link
-  mode. `CAS_BACNET_STACK_LINK` (`SOURCE` default, or `STATIC`/`DLL`) now picks the
-  link mode, so switching is a CMake flag rather than a code change. See the
-  README's new "Link modes" section.
-  - Stack pinned to `6.x-TestTool` @ `756371c1`, which carries the adapter
-    (cas-bacnet-stack PRs #267 and #268).
-  - `common/` bumped to **v1.5.1** (see `common/CHANGELOG.md`), byte-identical to
-    the other migrated examples. The `LoadBACnetFunctions()` requirement is a
-    contract change shared by every example in the series.
-  - Release CI now passes `-DCAS_BACNET_STACK_LINK=SOURCE` **explicitly** and
-    asserts it back out of `CMakeCache.txt`, so a published artifact stays a
-    single self-contained executable even if the CMake default ever moves.
-  - README: added parallel-build guidance for the ~600-file first compile, and
-    refreshed the Versions table.
+- **Pinned the CAS BACnet Stack to `6.x` @ `abd4cee1` (reports 6.0.21)** and
+  switched this example's shipped build to a prebuilt **STATIC** library:
+  `tools/build-stack-static.sh` builds `CASBACnetStack_x64_Release.lib` /
+  `libCASBACnetStack_x64_Release.a` from the stack's own project files, and
+  `-DCAS_BACNET_STACK_LINK=STATIC` links it. See the README's "Link mode"
+  section. The adapter's SOURCE mode still exists but this example is no
+  longer built or published that way.
+- `common/` synced to **v2.1.0** (see `common/CHANGELOG.md`), byte-identical to
+  the other migrated examples.
+- Interface changes reaching this example's `main.cpp`:
+  - `BACnetStack_AddNetworkPortObjectWithNetworkNumber` → `BACnetStack_AddNetworkPortObject`
+    (same argument list).
+  - Every `RegisterCallbackGetProperty*` callback gains a trailing
+    `uint32_t* errorCode` out-parameter, letting a declining Get callback name
+    a specific BACnet error instead of only falling back to the stack's
+    decline-and-fabricate default. Ported B-SS's "THE errorCode
+    OUT-PARAMETER" documentation and its one real use here: `GetPropertyCharString`
+    now sets `ERROR_CODE_INVALID_ARRAY_INDEX` for an out-of-range `State_Text` index.
+  - `CASExampleHelper::SetNetworkPortInstance(NETWORK_PORT_INSTANCE)` added
+    before `RegisterCommonCallbacks()` — the transport callbacks now dispatch
+    per Network Port instance rather than per network type.
+  - `BACnetStack_AddBDTEntry` gains a leading `networkPortInstance` parameter
+    (both call sites: this device's own entry and each seeded peer).
+  - `BACnetStack_GetBDTEntry` gains a leading `networkPortInstance` parameter
+    **and now returns `uint32_t`** (the number of bytes written; `0` on
+    failure) instead of `bool`. The start-up BDT readback loop now compares
+    the result to `0` explicitly rather than negating it with `!`, which
+    still worked out logically but forced the `uint32_t` through a `bool`
+    conversion the strict build (`/W4`) flags as `C4800`.
+- `APP_VERSION` bumped to `1.1.0`.
+
+### Verified
+
+- Builds STATIC with zero warnings from `main.cpp` / `common/`.
+- Smoke test (port 47821): `v1.1.0`, `CAS BACnet Stack version: 6.0.21.0`,
+  `Common helper (common/) version: 2.1.0`, the device comes up as a BBMD and
+  reads back its own seeded 3-entry Broadcast Distribution Table (this
+  device + the two documentation-range placeholder peers).
+- `--help` / `--version` exit 0; `--deviceID` overrides the announced instance.
+- The README's "Three traps" (6-octet BDT address, BDT-before-`SetBBMD` with
+  the self-entry, and enabling the BBMD table properties) were re-tested
+  against the new signatures and still hold exactly as written.
 
 ## [1.0.0] - unreleased
 
