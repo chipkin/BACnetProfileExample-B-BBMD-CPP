@@ -5,6 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Restructured the documentation** to match the series-wide README + TUTORIAL +
+  PICS shape (`docs/readme-tutorial-pics-restructure`): `README.md` is cut down
+  to this example only (BIBBs, services, objects, build, run, verify, footprint,
+  the generated series table); the extending/configuring-for-your-site guidance,
+  the "who serves what" breakdown, and Troubleshooting moved to the new
+  `TUTORIAL.md`; a new `docs/PICS.md` (ANSI/ASHRAE 135 Annex A shape) replaces
+  the README's old "Objects and properties" section, with a Device entry added
+  to `docs/objects.json` (`stack` vs `accepted` split, matching the series
+  convention) and regenerated with zero `⚠` rows.
+- **Switched the documented and released build to the adapter's default SOURCE
+  mode**, dropping the prebuilt STATIC library step
+  (`tools/build-stack-static.sh`, the `CAS_BACNET_STACK_LINK=STATIC` flag, and
+  the corresponding library cache/build steps and matrix `lib:` entries in
+  `.github/workflows/release.yml`). The build is now the same two commands
+  (`cmake -B build -S .` / `cmake --build build --config Release`) on every
+  platform, matching the rest of the series; `release.yml`'s link-mode
+  assertion now checks for `SOURCE`, its metrics JSON now records
+  `"link_mode": "SOURCE"`, and its packaged release artifact now includes
+  `TUTORIAL.md` and `docs/PICS.md`. The v1.1.0 footprint numbers were measured
+  from the old STATIC build; the README notes that the next release refreshes
+  them under the SOURCE build.
+- The "Before you ship" per-field guidance that used to live in a README table
+  is now comments next to the `CHANGE ALL OF THIS BEFORE YOU SHIP` block in
+  `main.cpp`, including the `DEVICE_NAME` / `Object_Name` uniqueness warning
+  and the device-instance uniqueness note.
+- `AGENTS.md` updated for the new file layout (`TUTORIAL.md`, `docs/PICS.md`,
+  `docs/objects.json`), the SOURCE-only build section, and a PICS-regeneration
+  verification step.
+
 ## [1.1.0] - 2026-09-15
 
 ### Changed
