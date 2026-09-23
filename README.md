@@ -52,7 +52,7 @@ this port performs the BBMD function.
 ## The device this example creates
 
 ```
-Device 389020  "Rainbow"   (Vendor 389 - Chipkin Automation Systems)
+Device 389020  "Chipkin Example B-BBMD"   (Vendor 389 - Chipkin Automation Systems)
     │
     ├── Analog Input 1        "Bronze"      Present_Value  21.5     (REAL, degrees Celsius; read-only)
     ├── Binary Input 1        "Emerald"     Present_Value  active   (0 = inactive / 1 = active; read-only)
@@ -109,7 +109,7 @@ trending.
 
 | Object type | Instance | Name |
 |-------------|:--------:|------|
-| Device | 389020 | Rainbow |
+| Device | 389020 | Chipkin Example B-BBMD |
 | Analog Input | 1 | Bronze |
 | Binary Input | 1 | Emerald |
 | Multi-State Input | 1 | Hot Pink |
@@ -208,7 +208,7 @@ CAS BACnet Stack version: 6.0.21.0
 Common helper (common/) version: 2.5.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1)
-FYI: Device 389020 ("Rainbow") ready. Vendor ID 389. Press 'h' for help.
+FYI: Device 389020 ("Chipkin Example B-BBMD") ready. Vendor ID 389. Press 'h' for help.
 FYI: this device is a BBMD. Broadcast Distribution Table:
       [0] 192.168.3.73:47808  mask 255.255.255.0   <- this device
       [1] 192.0.2.10:47808  mask 255.255.255.255
