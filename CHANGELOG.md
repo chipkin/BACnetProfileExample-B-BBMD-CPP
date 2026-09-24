@@ -5,7 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - unreleased
+
+### Changed
+
+- **Device renamed from the series' colour placeholder "Rainbow" to "Chipkin
+  Example B-BBMD"** so devices from different examples in the series are
+  distinguishable from each other on the same BACnet network - every example
+  previously announced the identical Object_Name "Rainbow", which made two
+  examples on one subnet indistinguishable by name. Sub-object names (Analog
+  Input 1 "Bronze", etc.) are unchanged - only the Device object's name
+  changed. `docs/colour-table.md` (series root) updated to match. APP_VERSION
+  bumped 1.1.1 -> 1.1.2.
+
 ## [Unreleased]
+
+### Fixed
+
+- **`Application_Software_Version` (12) and `Firmware_Revision` (44) were
+  hardcoded and stale** - both were literal `"1.0.0"` constants in
+  `main.cpp` that never moved as `APP_VERSION` advanced past 1.1.0, so a
+  client reading the Device object would see a version that no longer
+  matched the running build (or the `--version` banner). Fixed:
+  `Application_Software_Version` now reads `APP_VERSION` directly (one
+  source of truth, can't drift from `--version`'s own banner again); the
+  separate `APPLICATION_SOFTWARE_VERSION` constant is removed.
+  `Firmware_Revision` is now built at runtime from the CAS BACnet Stack's
+  own `BACnetStack_GetAPIMajorVersion()`/`GetAPIMinorVersion()`/
+  `GetAPIPatchVersion()`/`GetAPIBuildVersion()` (the same 4 calls
+  `common/CASExampleHelper.cpp`'s `PrintVersion()` already uses for the
+  startup banner), populated once into `g_firmwareRevision` right after
+  `LoadBACnetFunctions()` succeeds in `main()`; the old hardcoded
+  `FIRMWARE_REVISION` constant is removed. Bumped `APP_VERSION` to 1.1.1
+  for this fix, per this series' standing rule that any rebuild gets a
+  patch bump first.
 
 ### Changed
 

@@ -64,7 +64,7 @@ Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1
 
 ## Conventions
 
-- Device is named "Rainbow"; objects use the series' colour names; vendor id 389;
+- Device is named "Chipkin Example B-BBMD"; objects use the series' colour names; vendor id 389;
   device instance **389020**.
 - Implement **only** what B-BBMD requires — DS-RP-B, DS-WP-B, DM-DDB-B, DM-DOB-B,
   DM-DCC-B, NM-BBMDC-B — but expose **every required property** of each object for
