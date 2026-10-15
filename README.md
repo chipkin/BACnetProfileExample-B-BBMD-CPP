@@ -17,7 +17,7 @@ capability the profile exists for - forwards broadcasts between subnets as a
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.1.2**, built and verified
+> **Versions:** this document describes **example v1.2.0**, built and verified
 > against **CAS BACnet Stack 6.0.23** (`6.x` @ `e6de4ffd`), at
 > **Protocol_Revision 30**, with the vendored `common/` helper at **v3.0.0**.
 > Running the example prints all three - if what it prints disagrees with this
@@ -63,11 +63,19 @@ Device 389020  "Chipkin Example B-BBMD"   (Vendor 389 - Chipkin Automation Syste
     └── Network Port 1        "Vermilion"   the BACnet/IP port; BACnet_IP_Mode = bbmd (required on every device)
 ```
 
-The peer addresses this example seeds its Broadcast Distribution Table with are
-placeholders from the documentation range (RFC 5737 TEST-NET-1) - deliberately
-unreachable so the example cannot disturb a real network if you run it as-is.
-[TUTORIAL.md](TUTORIAL.md#configure-it-for-your-site) covers editing `bdtSeeds`
-for your real peer BBMDs before you point this at a site.
+The peer BBMDs come from the command line: one `--bdt <ip>[:<port>][/<mask>]`
+per peer (see [Command-line options](#command-line-options)). With none, the
+device is a BBMD with no peers - it still accepts foreign devices and passes
+their broadcasts to its own subnet and to each other. A client can replace the
+table at run time by writing the Network Port's
+`BBMD_Broadcast_Distribution_Table` (Annex J.4.4) and sending ReinitializeDevice
+ACTIVATE_CHANGES (cl. 12.56.38). `--no-bbmd` starts it as a
+plain BACnet/IP device instead (Annex L.7.3 requires a BBMD that also does
+other BACnet work to be able to be reconfigured as a non-BBMD).
+
+The sensor values (Analog Input 21.5 degC and the rest) are **Simulation**:
+fixed numbers standing in for real hardware. The BBMD function is not simulated
+- it is the stack's real BBMD, proven by the [Wire Tests](#wire-tests).
 
 ## What this example supports
 
@@ -103,7 +111,8 @@ trending.
 | Who-Is / I-Am | Answers Who-Is with I-Am, and broadcasts an I-Am on start-up (DM-DDB-B). |
 | Who-Has / I-Have | Answers Who-Has with I-Have (DM-DOB-B). |
 | DeviceCommunicationControl | Stops/resumes communication, with an optional password (DM-DCC-B). |
-| BBMD (Forwarded-NPDU, Register-Foreign-Device, Read-BDT, Read-FDT) | Handled entirely by the stack once the Network Port is handed over with `SetBBMD` (NM-BBMDC-B). |
+| ReinitializeDevice | ACTIVATE_CHANGES and WARMSTART only: what makes a written BDT effective (cl. 12.56.38). Other states are refused. |
+| BBMD (Annex J BVLL: Forwarded-NPDU, Distribute-Broadcast-To-Network, Register-Foreign-Device, Read-BDT, Read-FDT, Delete-FDT-Entry; Write-BDT answered with NAK X'0010') | Handled entirely by the stack once the Network Port is handed over with `SetBBMD` (NM-BBMDC-B). The BDT is configured with `--bdt` at start-up, or by WriteProperty of `BBMD_Broadcast_Distribution_Table`. |
 
 ### Object types
 
@@ -203,37 +212,41 @@ CMake at it: `cmake -B build -S . -D CAS_STACK_DIR=/path/to/cas-bacnet-stack`.
 Expected output:
 
 ```
-BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.1.2
+BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
 Common helper (common/) version: 3.0.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
-TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1)
-FYI: Device 389020 ("Chipkin Example B-BBMD") ready. Vendor ID 389. Press 'h' for help.
 FYI: this device is a BBMD. Broadcast Distribution Table:
-      [0] 192.168.3.73:47808  mask 255.255.255.0   <- this device
-      [1] 192.0.2.10:47808  mask 255.255.255.255
-      [2] 192.0.2.20:47808  mask 255.255.255.255
+      [0] 192.168.3.64:47808  mask 255.255.255.255   <- this device
+      [1] 192.168.2.10:47808  mask 255.255.255.255
       (the Foreign Device Table starts empty and fills in as remote
        devices send Register-Foreign-Device to this BBMD.)
+TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
+TX 27 bytes to 192.168.2.10:47808 (Network Port 1) - Unconfirmed: I-Am
+FYI: Device 389020 ("Chipkin Example B-BBMD") ready. Vendor ID 389. Press 'h' for help.
 ```
 
-The `TX` line is the start-up I-Am the device broadcasts to announce itself. It
-goes to the **local subnet broadcast** address (here `192.168.3.255`, computed
-from the Network Port's interface), not the global `255.255.255.255`. As
-clients talk to the device you'll see `RX ... bytes from ...` and
-`TX ... bytes to ...` lines showing the traffic.
+(run with `--bdt 192.168.2.10`). The first `TX` line is the start-up I-Am the
+device broadcasts to announce itself, on the **local subnet broadcast** address
+(here `192.168.3.255`, computed from the Network Port's interface). The second
+is the BBMD at work: the same broadcast, forwarded to the peer BBMD as a
+Forwarded-NPDU. As clients talk to the device you'll see `RX ... bytes from ...`
+and `TX ... bytes to ...` lines showing the traffic.
 
-Entry `[0]`'s mask is this device's own subnet mask (`255.255.255.0` here), not
-`255.255.255.255` like the peers. That is fine and intentional: a BBMD never
-forwards a broadcast to *itself*, so the self-entry's mask is never used - only
-the peer entries' masks matter for forwarding.
+Entry `[0]` is this device. Its mask is `255.255.255.255` ("two-hop", like the
+peers) on purpose: the stack reads its **own** entry's mask to decide whether a
+Forwarded-NPDU from a peer must be re-broadcast on this subnet (Annex J.4.5),
+and J.4.3.2 requires every BDT to give one subnet the same mask. To use one-hop
+for this subnet, list this device's own address with `--bdt` and the subnet
+mask.
 
 The device listens on UDP **47808** (BACnet/IP). Allow that port through your
 firewall. To use a different port, pass `--port` (see below).
 
-> **A wall of red `Error:` lines at start-up is expected and is not your bug** -
-> it is the stack's own debug logging plus the two unreachable placeholder BDT
-> peers. [TUTORIAL.md](TUTORIAL.md#troubleshooting) explains both.
+> **Red `Error:` lines while it runs are mostly the stack's own debug logging**,
+> for example when a peer BBMD is unreachable or a foreign device's
+> registration is refused. [TUTORIAL.md](TUTORIAL.md#troubleshooting) explains
+> them.
 
 ### Command-line options
 
@@ -241,6 +254,8 @@ firewall. To use a different port, pass `--port` (see below).
 |--------|---------|---------|
 | `--port <n>` | `47808` | UDP port to listen on (BACnet/IP). |
 | `--deviceID <n>` | `389020` | The device's BACnet instance number (BACnet requires this to be configurable). |
+| `--bdt <ip>[:<port>][/<mask>]` | none | A peer BBMD for the Broadcast Distribution Table; repeat once per peer. Port defaults to 47808, mask to `255.255.255.255` (two-hop). This device's own entry is added for you. |
+| `--no-bbmd` | off | Start as a plain BACnet/IP device (`BACnet_IP_Mode` = `normal`), not a BBMD. |
 | `--help`, `-h` | - | Show usage and exit. |
 | `--version` | - | Print the example, stack, and `common/` helper versions, then exit. |
 
@@ -281,18 +296,99 @@ Use a BACnet client such as the
    `service-request-denied` at Protocol_Revision >= 20 - a deprecation the
    stack applies, not a quirk of this example.)
 
-**Not yet proven end to end.** Nothing in this repository yet shows a
-broadcast actually crossing between BBMDs. It does not need two subnets: two
-BBMDs on **one host** (same LAN IP, different UDP ports) peer with each other,
-so a single-host Wire Test - a Python-simulated peer BBMD and foreign device
-driving this example - is planned and is the next piece of work on this
-example. Until then, you can check it by hand: point two BBMDs at each other via
-`bdtSeeds` (see [TUTORIAL.md](TUTORIAL.md#configure-it-for-your-site)), then
-confirm that a Who-Is broadcast on one side produces an I-Am from a device on
-the other.
+7. **Read-Broadcast-Distribution-Table** / **Read-Foreign-Device-Table** (the
+   BVLL messages; the CAS BACnet Explorer's BBMD tools send them) -> the BDT
+   above, and every foreign device registered with it.
 
 For a property-by-property review against the conformance statement, see
 [TUTORIAL.md](TUTORIAL.md).
+
+## Two BBMDs on one host
+
+The Profile Function - carrying a broadcast from one BBMD to another - can be
+seen on a single machine. Start two instances on different UDP ports, each
+listing the other as its peer:
+
+```bash
+./build/BACnetExampleBBBMD --port 47900 --deviceID 389021 --bdt 127.0.0.1:47901
+./build/BACnetExampleBBBMD --port 47901 --deviceID 389022 --bdt 127.0.0.1:47900
+```
+
+Each start-up I-Am now appears twice: once on its own subnet, and once on the
+other instance's console as a Forwarded-NPDU it received from its peer. Point a
+client at one of them as a **foreign device** (Register-Foreign-Device), send a
+Who-Is, and the I-Am from the *other* instance comes back through both BBMDs.
+
+The peers are named at `127.0.0.1`, not the LAN address, for a reason that
+only exists on one host. Annex J.4.5 says a Forwarded-NPDU from a sender "on
+the same IP subnet" was already heard by every device there, and the stack
+judges "same subnet" from the sender's IP. Two instances on one machine share
+one IP, so a Forwarded-NPDU between them over the LAN address looks local and
+is not passed on. Over `127.0.0.1` it arrives from a different address, exactly
+as it would from a peer on another subnet. On a real site, use each peer's own
+address.
+
+## Wire Tests
+
+Automated tests drive the running example over BACnet/IP from outside it and
+fail when its BBMD function is removed. Their Peers - foreign devices and
+stand-in peer BBMDs - are Python, never another example's binary; they put
+hand-built Annex J frames on the wire and check the octets that come back.
+Python 3 standard library only. Build the example, then from the repository
+root:
+
+```bash
+python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD
+```
+
+It ends with `ALL WIRE TESTS PASSED` (exit 0) after about two minutes - one
+test waits out a foreign device's 30-second grace period. The `release.yml`
+workflow runs the same command on Linux after the smoke test. What each script
+proves, and the run that showed each check fails without its feature, is in
+[tests/README.md](tests/README.md). In short:
+
+- **The Profile Function** (`forwarding_test.py`): two instances, BBMD A and
+  BBMD B, peered two-hop. A Python foreign device F1 registered with A sends a
+  Who-Is as Distribute-Broadcast-To-Network; Python foreign device F2,
+  registered with B, receives it from B as a Forwarded-NPDU carrying F1's
+  address. B's own device answers with an I-Am that reaches F2 and, through A,
+  F1. A third instance shows the K.6.6 minimums: five peer BBMDs and five
+  foreign devices.
+- **Managing the tables** (`tables_test.py`): Read-BDT and Read-FDT replies,
+  Delete-FDT-Entry, Write-BDT NAKed X'0010', `BACnet_IP_Mode` = `bbmd`, and a
+  WriteProperty of `BBMD_Broadcast_Distribution_Table` followed by
+  ReinitializeDevice ACTIVATE_CHANGES, after which the next broadcast reaches
+  the new peer.
+- **Failure Modes** (`failure_modes_test.py`): a foreign device that stops
+  re-registering is purged after its Time-to-Live plus 30 seconds and its
+  broadcasts are refused (NAK X'0060'); a full Foreign Device Table refuses the
+  next registration (NAK X'0030'); and `--no-bbmd` answers every BBMD message
+  with the NAK Annex J requires of a non-BBMD.
+
+What the Wire Tests do **not** show:
+
+- **B re-broadcasting onto its own subnet.** On Linux/macOS the test captures
+  it; Windows refuses the second socket on B's port that capturing needs. The
+  stack's unit tests (`tests/BACnetBBMDTests.cpp` in the stack) also cover the
+  re-broadcast logic. A real two-subnet test - two BBMDs on two IP subnets, a
+  device behind each - is done by hand when needed.
+- **Peers that share one IP address.** J.4.5 says that a BBMD receiving a
+  Forwarded-NPDU from a peer on its own subnet must still pass it to its
+  foreign devices. Stack `6.x` @ `e6de4ffd` drops it instead. The test reports
+  this as a `[KNOWN GAP]` (see [TODO.md](TODO.md)); it is why the one-host
+  setup above names peers at `127.0.0.1`.
+- **A BDT write waiting for ReinitializeDevice.** Cl. 12.56.38 says a written
+  BDT becomes effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART;
+  stack `6.x` @ `e6de4ffd` applies it at once. Reported as a `[KNOWN GAP]`
+  ([TODO.md](TODO.md)).
+- **`BBMD_Accept_FD_Registrations` = FALSE.** At this Stack Pin that property
+  always reads TRUE and is not writable, so a BBMD that refuses all
+  registrations cannot be configured. Stack `6.x` after `e6de4ffd` makes it
+  writable (#3321); see [TODO.md](TODO.md).
+
+On Windows the tests pass, but more slowly: the example's socket misses some
+incoming datagrams there (see [TODO.md](TODO.md)), so the tests repeat any
+request that gets no answer.
 
 
 ## The BACnet profile example series

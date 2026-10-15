@@ -45,6 +45,15 @@
 // maintains the FDT as foreign devices register and expire. The application's only
 // jobs are configuration (below) and reporting BACnet_IP_Mode = bbmd.
 //
+// THE PEER BBMDs COME FROM THE COMMAND LINE: one --bdt <ip>[:<port>][/<mask>] per
+// peer (repeat it). Without any --bdt the device is a BBMD with no peers - it still
+// accepts foreign devices and distributes their broadcasts locally and to each
+// other. A client can replace the table later by writing the Network Port's
+// BBMD_Broadcast_Distribution_Table property (Annex J.4.4). --no-bbmd starts it as
+// a plain BACnet/IP device instead (Annex L.7.3: a device that is a BBMD "along
+// with some other BACnet functionality" must be able to be reconfigured as a
+// non-BBMD).
+//
 // The device keeps the same objects as B-ASC / B-SA - three read-only sensor
 // inputs and three commandable outputs a client drives with WriteProperty. Each
 // object has a colour name (the convention shared across this example series):
@@ -75,7 +84,7 @@
 //
 // Interactive keys (handled by the shared helper): h = help, q = quit,
 // up/down = nudge Analog Input 1 by +/-1.1. Command line: --port <n>,
-// --deviceID <n>.
+// --deviceID <n>, --bdt <ip>[:<port>][/<mask>] (repeatable), --no-bbmd.
 //
 // All the UDP/stack plumbing lives in common/CASExampleHelper so this file can
 // stay focused on the BACnet logic.
@@ -88,8 +97,10 @@
                                     // see the top of main() below.
 
 #include <stdio.h>
+#include <stdlib.h>  // strtoul()
 #include <string.h>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #include <windows.h> // Sleep()
@@ -114,11 +125,96 @@ using namespace CASBACnetStackExampleConstants;
 //    bbmd (2)   = THIS device performs the BBMD function
 static const uint32_t BACNET_IP_MODE_BBMD = 2;
 
+// -- ReinitializeDevice 'Reinitialized State of Device' (cl. 16.4.1.1.1) -------
+//    The shared constants carry COLDSTART (0) and WARMSTART (1); a written BDT
+//    becomes effective on ACTIVATE_CHANGES (7) or WARMSTART (cl. 12.56.38).
+static const uint32_t REINITIALIZE_STATE_ACTIVATE_CHANGES = 7;
+
+// The default UDP port of a peer BBMD named without one (X'BAC0', Annex J.5.2).
+static const uint16_t DEFAULT_BACNET_IP_UDP_PORT = 47808;
+
+// The broadcast distribution mask for "two-hop" distribution (Annex J.4.3.2): all
+// 1's. The BBMD sends a peer a unicast Forwarded-NPDU and the peer re-broadcasts it
+// on its own subnet. It is what --bdt uses when no /<mask> is given, and what this
+// device's OWN entry uses (see SetUpBbmd()).
+static const uint8_t TWO_HOP_DISTRIBUTION_MASK[4] = { 255, 255, 255, 255 };
+
+// One Broadcast Distribution Table entry as given on the command line.
+struct BdtCommandLineEntry {
+    uint8_t ipAddress[4];
+    uint16_t udpPort;
+    uint8_t distributionMask[4];
+};
+
+// Reads "a.b.c.d" from the start of text into octets; parseEnd is left just after
+// it. False if text does not start with four dot-separated values 0..255.
+static bool ParseDottedQuad(const char* text, const char** parseEnd, uint8_t octets[4]) {
+    const char* cursor = text;
+    for (int octetIndex = 0; octetIndex < 4; ++octetIndex) {
+        if (octetIndex > 0) {
+            if (*cursor != '.') {
+                return false;
+            }
+            ++cursor;
+        }
+        if (*cursor < '0' || *cursor > '9') {
+            return false;
+        }
+        char* numberEnd = NULL;
+        const unsigned long parsedValue = strtoul(cursor, &numberEnd, 10);
+        if (parsedValue > 255) {
+            return false;
+        }
+        octets[octetIndex] = (uint8_t)parsedValue;
+        cursor = numberEnd;
+    }
+    *parseEnd = cursor;
+    return true;
+}
+
+// Parses one --bdt value: <ip>[:<port>][/<mask>], for example
+//     192.168.2.10              -> 192.168.2.10:47808 mask 255.255.255.255 (two-hop)
+//     192.168.2.10:47809        -> a peer BBMD on a non-default port
+//     192.168.2.10/255.255.255.0 -> one-hop: directed broadcast onto that subnet
+static bool ParseBdtArgument(const char* text, BdtCommandLineEntry* entry) {
+    const char* cursor = text;
+    if (!ParseDottedQuad(cursor, &cursor, entry->ipAddress)) {
+        return false;
+    }
+    entry->udpPort = DEFAULT_BACNET_IP_UDP_PORT;
+    if (*cursor == ':') {
+        ++cursor;
+        if (*cursor < '0' || *cursor > '9') {
+            return false;
+        }
+        char* portEnd = NULL;
+        const unsigned long parsedPort = strtoul(cursor, &portEnd, 10);
+        if (parsedPort == 0 || parsedPort > 65535) {
+            return false;
+        }
+        entry->udpPort = (uint16_t)parsedPort;
+        cursor = portEnd;
+    }
+    memcpy(entry->distributionMask, TWO_HOP_DISTRIBUTION_MASK, 4);
+    if (*cursor == '/') {
+        ++cursor;
+        if (!ParseDottedQuad(cursor, &cursor, entry->distributionMask)) {
+            return false;
+        }
+    }
+    return *cursor == '\0'; // nothing may follow the entry
+}
+
+// Set from the command line in main(): the peer BBMDs (--bdt), and whether this
+// device performs the BBMD function at all (--no-bbmd turns it off).
+static std::vector<BdtCommandLineEntry> g_bdtCommandLineEntries;
+static bool g_isBbmd = true;
+
 // -----------------------------------------------------------------------------
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++";
-static const char* APP_VERSION = "1.1.2";
+static const char* APP_VERSION = "1.2.0";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389020 and can be overridden on the command line with --deviceID. Keep it
@@ -471,8 +567,8 @@ bool GetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
         // At this Stack Pin (6.x @ e6de4ffd) the stack does not report it for
         // you, so the application must. Later 6.x (#2548) makes SetBBMD set
         // BACnet_IP_Mode itself; this branch becomes redundant once the pin moves
-        // past it.
-        *value = BACNET_IP_MODE_BBMD;
+        // past it. Started with --no-bbmd, the port is a plain one: `normal`.
+        *value = g_isBbmd ? BACNET_IP_MODE_BBMD : BACNET_IP_MODE_NORMAL;
         return true;
     }
     return false;
@@ -950,6 +1046,235 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
 }
 
 // -----------------------------------------------------------------------------
+// 2c-ii. ReinitializeDevice callback - how a written BDT becomes effective
+//
+// A BBMD's BBMD_Broadcast_Distribution_Table is writable, and cl. 12.56.38 says
+// "A value written to this property shall become effective when the device
+// receives a ReinitializeDevice service request with a 'Reinitialized State of
+// Device' of ACTIVATE_CHANGES or WARMSTART" (BBMD_Accept_FD_Registrations,
+// cl. 12.56.39, the same). So a B-BBMD has to execute ReinitializeDevice for
+// those two states, even though no Annex L.7 BIBB names DM-RD-B. This is the
+// same shape as B-SCHUB's callback, which activates staged certificates.
+//
+// The stack calls this BEFORE it activates its own pending Network Port changes
+// and does that itself when we return true; this example holds no state of its
+// own to apply. The process is not restarted: "warm start" here means "apply
+// the pending changes". Other states (COLDSTART, the backup/restore ones) are
+// refused. Like DeviceCommunicationControl, this example sets no password - a
+// real device guards ReinitializeDevice with one.
+//
+// AT THIS STACK PIN (6.x @ e6de4ffd) a BDT write does not wait for this: the
+// stack applies it as soon as it acknowledges the WriteProperty, and
+// BBMD_Accept_FD_Registrations is not writable at all. Later 6.x fixes the
+// second (#3321); see TODO.md. The Wire Tests report the first as a known gap.
+// -----------------------------------------------------------------------------
+bool ReinitializeDevice(const uint32_t deviceInstance, const uint32_t reinitializedState,
+                        const char* password, const uint32_t passwordLength, uint32_t* errorCode) {
+    (void)password;        // no password in this example - see DeviceCommunicationControl
+    (void)passwordLength;
+    if (deviceInstance != g_deviceInstance) {
+        *errorCode = ERROR_CODE_OPTIONAL_FUNCTIONALITY_NOT_SUPPORTED;
+        return false;
+    }
+    if (reinitializedState != REINITIALIZE_STATE_ACTIVATE_CHANGES &&
+        reinitializedState != REINITIALIZE_STATE_WARMSTART) {
+        printf("ReinitializeDevice: state %u not supported (only WARMSTART and ACTIVATE_CHANGES).\n",
+               reinitializedState);
+        *errorCode = ERROR_CODE_OPTIONAL_FUNCTIONALITY_NOT_SUPPORTED;
+        return false;
+    }
+    printf("ReinitializeDevice %s: the stack activates the pending Network Port changes.\n",
+           reinitializedState == REINITIALIZE_STATE_WARMSTART ? "WARMSTART" : "ACTIVATE_CHANGES");
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// 2d. Make Network Port 1 a BBMD (NM-BBMDC-B) - the one thing B-BBMD adds
+//
+// Called from main() unless --no-bbmd was given. Returns false (after printing
+// why) if the stack refused any step; main() then exits non-zero.
+// -----------------------------------------------------------------------------
+static bool SetUpBbmd() {
+    // --- Turn this device into a BBMD (the B-BBMD addition, NM-BBMDC-B) ------
+    // The stack owns the BBMD machinery: it forwards local broadcasts to every BDT
+    // peer as a Forwarded-NPDU, re-broadcasts what arrives from peers, answers
+    // Read-Broadcast-Distribution-Table / Read-Foreign-Device-Table, and adds,
+    // ages out, and removes FDT entries as foreign devices register and expire.
+    // Our job is only to build the table and then hand the port over.
+    //
+    // ORDER MATTERS, AND IT IS THE OPPOSITE OF WHAT YOU MIGHT EXPECT. Build the
+    // WHOLE BDT *first*, then call SetBBMD last. SetBBMD looks through the BDT for
+    // the host device's own entry and fails outright if it is not already there:
+    //     Error: Broadcast Distribution Table is not configured with host device entry
+    //     Error: Failed to UpdateHostBDTIndex, aborting BBMD setup
+    // The stack does NOT add the self-entry for you.
+    //
+    // A BDT entry is an IP + a broadcast-distribution mask. The mask chooses HOW
+    // that peer delivers what we send it:
+    //   255.255.255.255 = "two-hop": we unicast to the peer, and the peer
+    //                     re-broadcasts onto its own subnet. This is the normal,
+    //                     router-friendly choice and what we use for peers here.
+    //   <the peer's real subnet mask> = "one-hop": we send a directed broadcast
+    //                     straight onto the peer's subnet. It needs the intervening
+    //                     routers to forward directed broadcasts, which most are
+    //                     configured not to do.
+    //
+    // A BDT entry's address is a 6-octet BACnet/IP ("B/IP") address: the 4 IP
+    // octets followed by the 2-octet UDP port, most-significant byte first - NOT
+    // the bare 4-octet IP. Same 6-octet layout the Network Port's MAC_Address uses.
+    //
+    // AddBDTEntry takes a leading networkPortInstance so a multi-port device can
+    // target the specific IPv4 Network Port whose table is being built; a single
+    // -port example like this one always passes NETWORK_PORT_INSTANCE.
+    //
+    // WARNING: the AddBDTEntry length argument does NOT protect you. The stack
+    // ignores it and always copies 6 octets from your buffer, and AddBDTEntry
+    // returns true even for a malformed entry - so the error check below cannot
+    // catch a bad address. What matters is that the BUFFER holds 6 octets. Pass a
+    // 4-octet buffer and the stack reads 2 bytes of adjacent memory as the port
+    // and forwards broadcasts to that garbage address, silently. Always build the
+    // 6-octet address with MakeBip below rather than passing a raw IP + a length.
+    struct BipAddress { uint8_t octet[6]; };
+    struct MakeBip {
+        static BipAddress From(const uint8_t ip[4], uint16_t udpPort) {
+            BipAddress a;
+            memcpy(a.octet, ip, 4);
+            a.octet[4] = (uint8_t)(udpPort >> 8);   // port, high byte first
+            a.octet[5] = (uint8_t)(udpPort & 0xFF);
+            return a;
+        }
+    };
+
+    // 1) OUR OWN entry, first - per Annex J.4.3.2 a BBMD's BDT includes itself
+    //    ("one entry for the address of the BBMD for the local IP subnet"), and as
+    //    above the stack requires it before SetBBMD will succeed. The stack finds
+    //    it by reading this Network Port's IP_Address + BACnet_IP_UDP_Port (via our
+    //    Get callbacks) and looking for a BDT entry with that exact B/IP address -
+    //    so the port here must be the port we are actually listening on.
+    //
+    //    ITS MASK MATTERS MORE THAN IT LOOKS. The stack reads its OWN entry's mask to
+    //    decide how a Forwarded-NPDU from a peer arrived (Annex J.4.5): all 1's means
+    //    "a peer unicast it to me" (two-hop), so the BBMD re-broadcasts it onto this
+    //    subnet; anything else means "it arrived as a directed broadcast", so every
+    //    device here already has it and the BBMD does NOT re-broadcast. Peers that
+    //    list this BBMD two-hop must therefore see all 1's here too - J.4.3.2: "The
+    //    broadcast distribution masks referring to the same IP subnet shall be
+    //    identical in each BDT." Two-hop is the default; to use one-hop for this
+    //    subnet, list this device's own address with --bdt and the subnet mask.
+    uint8_t hostMask[4];
+    memcpy(hostMask, TWO_HOP_DISTRIBUTION_MASK, 4);
+    for (size_t entryIndex = 0; entryIndex < g_bdtCommandLineEntries.size(); ++entryIndex) {
+        const BdtCommandLineEntry& entry = g_bdtCommandLineEntries[entryIndex];
+        if (memcmp(entry.ipAddress, g_ipAddress, 4) == 0 && entry.udpPort == g_bacnetIpUdpPort) {
+            memcpy(hostMask, entry.distributionMask, 4);
+        }
+    }
+    const BipAddress hostBip = MakeBip::From(g_ipAddress, g_bacnetIpUdpPort);
+    if (!BACnetStack_AddBDTEntry(NETWORK_PORT_INSTANCE, hostBip.octet, sizeof(hostBip.octet), hostMask, 4)) {
+        printf("Error: Failed to add this device's own BDT entry (%u.%u.%u.%u:%u).\n",
+               g_ipAddress[0], g_ipAddress[1], g_ipAddress[2], g_ipAddress[3], g_bacnetIpUdpPort);
+        return false;
+    }
+    uint16_t bdtEntryCount = 1;
+
+    // 2) The PEER BBMDs - one per remote subnet we want broadcasts to reach, from
+    //    the --bdt options (main() parsed them). A real product would load this
+    //    table from its own configuration store the same way.
+    //
+    //    Over BACnet, Annex J.4.4 says the BDT "shall be supplied by writing to the
+    //    BBMD_Broadcast_Distribution_Table property of the Network Port Object" -
+    //    i.e. WriteProperty, NOT the Write-Broadcast-Distribution-Table BVLL message:
+    //    J.4.4.2 requires every B/IP device to answer that message with a BVLC-Result
+    //    of X'0010' (NAK), and the stack does. The stack makes that property writable
+    //    on its own (cl. 12.56.38 requires it), so a client can replace this table at
+    //    run time, then send ReinitializeDevice ACTIVATE_CHANGES to make it effective
+    //    (cl. 12.56.38; see ReinitializeDevice above). At this Stack Pin the stack
+    //    applies the write at once instead (TODO.md). The replacement must keep this
+    //    device's own entry, or the stack refuses it (value-out-of-range).
+    for (size_t entryIndex = 0; entryIndex < g_bdtCommandLineEntries.size(); ++entryIndex) {
+        const BdtCommandLineEntry& entry = g_bdtCommandLineEntries[entryIndex];
+        if (memcmp(entry.ipAddress, g_ipAddress, 4) == 0 && entry.udpPort == g_bacnetIpUdpPort) {
+            continue; // this device's own entry - already added above
+        }
+        const BipAddress peerBip = MakeBip::From(entry.ipAddress, entry.udpPort);
+        if (!BACnetStack_AddBDTEntry(NETWORK_PORT_INSTANCE, peerBip.octet, sizeof(peerBip.octet), entry.distributionMask, 4)) {
+            printf("Error: Failed to add the BDT entry for peer BBMD %u.%u.%u.%u:%u.\n",
+                   entry.ipAddress[0], entry.ipAddress[1], entry.ipAddress[2], entry.ipAddress[3],
+                   entry.udpPort);
+            return false;
+        }
+        ++bdtEntryCount;
+    }
+
+    // 3) Now hand the port over - say WHICH Network Port performs the BBMD
+    //    function. A device can have several ports; the BBMD function belongs to a
+    //    specific BACnet/IP one. This must come AFTER the BDT is populated.
+    if (!BACnetStack_SetBBMD(g_deviceInstance, NETWORK_PORT_INSTANCE)) {
+        printf("Error: Failed to make Network Port 1 (Vermilion) a BBMD.\n");
+        return false;
+    }
+
+    // Enable the three BBMD table properties on the Network Port so a client can
+    // ReadProperty them. These are OPTIONAL on a Network Port (required only when
+    // BACnet_IP_Mode is bbmd), and at this Stack Pin (6.x @ e6de4ffd) SetBBMD
+    // does NOT enable them for you (later 6.x, #3317, does - these calls become
+    // redundant once the pin moves past it) - so
+    // without these calls, reading BBMD_Broadcast_Distribution_Table returns
+    // unknown-property even though the BBMD is fully functional. This is the exact
+    // "serving is not enough, you must enable" trap the Description property teaches
+    // above. The property IDs are not in the shared example constants, so name them
+    // here from the stack's BACnetPropertyIdentifier enum - keep these in sync with
+    // that enum (bbmdAcceptFdRegistrations/bbmdBroadcastDistributionTable/
+    // bbmdForeignDeviceTable); a stack renumber would not be caught at compile time.
+    // Note: reading BBMD_Accept_FD_Registrations always returns true here - the
+    // stack generates it as a constant at this Stack Pin, it does not reflect a
+    // configurable setting (cl. 12.56.39 wants it writable; later 6.x, #3321).
+    static const uint32_t PROP_BBMD_ACCEPT_FD_REGISTRATIONS = 413;
+    static const uint32_t PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE = 414;
+    static const uint32_t PROP_BBMD_FOREIGN_DEVICE_TABLE = 415;
+    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_FOREIGN_DEVICE_TABLE, true) ||
+        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
+                                        NETWORK_PORT_INSTANCE, PROP_BBMD_ACCEPT_FD_REGISTRATIONS, true)) {
+        printf("Error: Failed to enable the BBMD table properties on Network Port 1.\n");
+        return false;
+    }
+
+    // Print the BDT the stack is actually holding, read back through the stack's
+    // own getter rather than from the --bdt list - so what you see is what the BBMD
+    // will really use. Entry [0] is this device itself.
+    printf("FYI: this device is a BBMD. Broadcast Distribution Table:\n");
+    // Iterate exactly the entries we added (our own + the peers). Do NOT probe
+    // upwards until GetBDTEntry fails: an out-of-range index is a real error to
+    // the stack and it logs one, so a probe loop prints a spurious error at the
+    // end of an otherwise healthy start-up.
+    //
+    // GetBDTEntry now returns uint32_t, not bool: the number of bytes written to
+    // ipAddress (always 6 on success), or 0 on failure (out-of-range index, a NULL
+    // pointer, a wrong length, or a networkPortInstance that does not match any
+    // claimed IPv4 Network Port). `if (!GetBDTEntry(...))` compiles but forces the
+    // uint32_t through a bool conversion (/W4 C4800) - compare to 0 explicitly.
+    for (uint16_t i = 0; i < bdtEntryCount; ++i) {
+        uint8_t bip[6] = { 0, 0, 0, 0, 0, 0 }; // 6 octets: IP[4] + UDP port[2]
+        uint8_t mask[4] = { 0, 0, 0, 0 };
+        if (BACnetStack_GetBDTEntry(NETWORK_PORT_INSTANCE, i, bip, sizeof(bip), mask, sizeof(mask)) == 0) {
+            printf("      [%u] <could not be read back>\n", i);
+            continue;
+        }
+        const uint16_t peerPort = (uint16_t)((bip[4] << 8) | bip[5]);
+        printf("      [%u] %u.%u.%u.%u:%u  mask %u.%u.%u.%u%s\n", i,
+               bip[0], bip[1], bip[2], bip[3], peerPort,
+               mask[0], mask[1], mask[2], mask[3],
+               (i == 0) ? "   <- this device" : "");
+    }
+    printf("      (the Foreign Device Table starts empty and fills in as remote\n"
+           "       devices send Register-Foreign-Device to this BBMD.)\n");
+    return true;
+}
+
+// -----------------------------------------------------------------------------
 // 3. main()
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
@@ -985,10 +1310,41 @@ int main(int argc, char** argv) {
     // --help / --version print and exit, so handle them before we bind a socket
     // or touch the stack.
     if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION)) {
+        // The shared helper prints the options every example has; these two are
+        // this example's own.
+        for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+            if (strcmp(argv[argumentIndex], "--version") == 0) {
+                return 0;
+            }
+        }
+        printf("B-BBMD options:\n");
+        printf("  --bdt <ip>[:<port>][/<mask>]\n");
+        printf("                    A peer BBMD for the Broadcast Distribution Table. Repeat it\n");
+        printf("                    once per peer. Port defaults to 47808; mask defaults to\n");
+        printf("                    255.255.255.255 (two-hop). This device's own entry is added\n");
+        printf("                    for you (two-hop), unless you list its address yourself.\n");
+        printf("  --no-bbmd         Start as a plain BACnet/IP device, not a BBMD.\n");
         return 0;
     }
     const uint16_t port = CASExampleHelper::ParsePortArg(argc, argv, 47808);
     g_deviceInstance = CASExampleHelper::ParseDeviceIdArg(argc, argv, g_deviceInstance);
+    for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+        if (strcmp(argv[argumentIndex], "--no-bbmd") == 0) {
+            g_isBbmd = false;
+        } else if (strcmp(argv[argumentIndex], "--bdt") == 0) {
+            BdtCommandLineEntry entry;
+            if (argumentIndex + 1 >= argc || !ParseBdtArgument(argv[argumentIndex + 1], &entry)) {
+                printf("Error: --bdt expects <ip>[:<port>][/<mask>], e.g. 192.168.2.10:47808/255.255.255.255\n");
+                return 1;
+            }
+            g_bdtCommandLineEntries.push_back(entry);
+            ++argumentIndex;
+        }
+    }
+    if (!g_isBbmd && !g_bdtCommandLineEntries.empty()) {
+        printf("Error: --bdt has no effect with --no-bbmd (a plain BACnet/IP device has no BDT).\n");
+        return 1;
+    }
     CASExampleHelper::PrintVersion(APP_NAME, APP_VERSION);
 
     // --- Bind the BACnet/IP socket -----------------------------------------
@@ -1026,6 +1382,9 @@ int main(int argc, char** argv) {
     BACnetStack_RegisterCallbackSetPropertyNull(SetPropertyNull);
     // The DeviceCommunicationControl callback satisfies DM-DCC-B (identical to B-ASC).
     BACnetStack_RegisterCallbackDeviceCommunicationControl(DeviceCommunicationControl);
+    // ReinitializeDevice ACTIVATE_CHANGES / WARMSTART makes a written BDT effective
+    // (cl. 12.56.38) - see the callback.
+    BACnetStack_RegisterCallbackReinitializeDevice(ReinitializeDevice);
 
     // --- Create the device --------------------------------------------------
     if (!BACnetStack_AddDevice(g_deviceInstance)) {
@@ -1050,6 +1409,10 @@ int main(int argc, char** argv) {
     }
     if (!BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_DEVICE_COMMUNICATION_CONTROL, true)) {
         printf("Error: Failed to enable the DeviceCommunicationControl service.\n");
+        return 1;
+    }
+    if (!BACnetStack_SetServiceEnabled(g_deviceInstance, SERVICE_REINITIALIZE_DEVICE, true)) {
+        printf("Error: Failed to enable the ReinitializeDevice service.\n");
         return 1;
     }
 
@@ -1199,130 +1562,15 @@ int main(int argc, char** argv) {
     }
 
     // --- Turn this device into a BBMD (the B-BBMD addition, NM-BBMDC-B) ------
-    // The stack owns the BBMD machinery: it forwards local broadcasts to every BDT
-    // peer as a Forwarded-NPDU, re-broadcasts what arrives from peers, answers
-    // Read-Broadcast-Distribution-Table / Read-Foreign-Device-Table, and adds,
-    // ages out, and removes FDT entries as foreign devices register and expire.
-    // Our job is only to build the table and then hand the port over.
-    //
-    // ORDER MATTERS, AND IT IS THE OPPOSITE OF WHAT YOU MIGHT EXPECT. Build the
-    // WHOLE BDT *first*, then call SetBBMD last. SetBBMD looks through the BDT for
-    // the host device's own entry and fails outright if it is not already there:
-    //     Error: Broadcast Distribution Table is not configured with host device entry
-    //     Error: Failed to UpdateHostBDTIndex, aborting BBMD setup
-    // The stack does NOT add the self-entry for you.
-    //
-    // A BDT entry is an IP + a broadcast-distribution mask. The mask chooses HOW
-    // that peer delivers what we send it:
-    //   255.255.255.255 = "two-hop": we unicast to the peer, and the peer
-    //                     re-broadcasts onto its own subnet. This is the normal,
-    //                     router-friendly choice and what we use for peers here.
-    //   <the peer's real subnet mask> = "one-hop": we send a directed broadcast
-    //                     straight onto the peer's subnet. It needs the intervening
-    //                     routers to forward directed broadcasts, which most are
-    //                     configured not to do.
-    //
-    // A BDT entry's address is a 6-octet BACnet/IP ("B/IP") address: the 4 IP
-    // octets followed by the 2-octet UDP port, most-significant byte first - NOT
-    // the bare 4-octet IP. Same 6-octet layout the Network Port's MAC_Address uses.
-    //
-    // AddBDTEntry takes a leading networkPortInstance so a multi-port device can
-    // target the specific IPv4 Network Port whose table is being built; a single
-    // -port example like this one always passes NETWORK_PORT_INSTANCE.
-    //
-    // WARNING: the AddBDTEntry length argument does NOT protect you. The stack
-    // ignores it and always copies 6 octets from your buffer, and AddBDTEntry
-    // returns true even for a malformed entry - so the error check below cannot
-    // catch a bad address. What matters is that the BUFFER holds 6 octets. Pass a
-    // 4-octet buffer and the stack reads 2 bytes of adjacent memory as the port
-    // and forwards broadcasts to that garbage address, silently. Always build the
-    // 6-octet address with MakeBip below rather than passing a raw IP + a length.
-    struct BipAddress { uint8_t octet[6]; };
-    struct MakeBip {
-        static BipAddress From(const uint8_t ip[4], uint16_t udpPort) {
-            BipAddress a;
-            memcpy(a.octet, ip, 4);
-            a.octet[4] = (uint8_t)(udpPort >> 8);   // port, high byte first
-            a.octet[5] = (uint8_t)(udpPort & 0xFF);
-            return a;
-        }
-    };
-
-    // 1) OUR OWN entry, first - per Annex J a BBMD's BDT includes itself, and as
-    //    above the stack requires it before SetBBMD will succeed. The stack finds
-    //    it by reading this Network Port's IP_Address + BACnet_IP_UDP_Port (via our
-    //    Get callbacks) and looking for a BDT entry with that exact B/IP address -
-    //    so the port here must be the port we are actually listening on.
-    const BipAddress hostBip = MakeBip::From(g_ipAddress, g_bacnetIpUdpPort);
-    if (!BACnetStack_AddBDTEntry(NETWORK_PORT_INSTANCE, hostBip.octet, sizeof(hostBip.octet), g_ipSubnetMask, 4)) {
-        printf("Error: Failed to add this device's own BDT entry (%u.%u.%u.%u:%u).\n",
-               g_ipAddress[0], g_ipAddress[1], g_ipAddress[2], g_ipAddress[3], g_bacnetIpUdpPort);
-        return 1;
-    }
-
-    // 2) The PEER BBMDs - one per remote subnet we want broadcasts to reach.
-    //
-    //    IMPORTANT - EDIT THIS FOR YOUR SITE. The addresses below are placeholders
-    //    from the documentation range (RFC 5737 TEST-NET-1), deliberately chosen so
-    //    they cannot collide with a real device if you run this example as-is: they
-    //    are unreachable, so the stack simply logs the failed forwards rather than
-    //    disturbing anyone's network. Replace them with your actual peer BBMDs.
-    //    A real product would load this table from its configuration. Over BACnet,
-    //    Annex J.4.4 says the BDT "shall be supplied by writing to the
-    //    BBMD_Broadcast_Distribution_Table property of the Network Port Object" -
-    //    i.e. WriteProperty, NOT the Write-Broadcast-Distribution-Table BVLL message:
-    //    J.4.4.2 requires every B/IP device to answer that message with a BVLC-Result
-    //    of X'0010' (NAK), and the stack does. This example does not make the
-    //    property writable, so here the BDT is set at start-up only.
-    struct BdtSeed { const char* description; uint8_t ip[4]; uint16_t port; uint8_t mask[4]; };
-    static const BdtSeed bdtSeeds[] = {
-        { "peer BBMD on subnet 2", { 192, 0, 2, 10 }, 47808, { 255, 255, 255, 255 } },
-        { "peer BBMD on subnet 3", { 192, 0, 2, 20 }, 47808, { 255, 255, 255, 255 } },
-    };
-    for (size_t i = 0; i < sizeof(bdtSeeds) / sizeof(bdtSeeds[0]); ++i) {
-        const BipAddress peerBip = MakeBip::From(bdtSeeds[i].ip, bdtSeeds[i].port);
-        if (!BACnetStack_AddBDTEntry(NETWORK_PORT_INSTANCE, peerBip.octet, sizeof(peerBip.octet), bdtSeeds[i].mask, 4)) {
-            printf("Error: Failed to add BDT entry for %s (%u.%u.%u.%u:%u).\n",
-                   bdtSeeds[i].description,
-                   bdtSeeds[i].ip[0], bdtSeeds[i].ip[1], bdtSeeds[i].ip[2], bdtSeeds[i].ip[3],
-                   bdtSeeds[i].port);
+    // See SetUpBbmd() above. With --no-bbmd it stays a plain BACnet/IP device
+    // (BACnet_IP_Mode = normal) - the "reconfigured as a non-BBMD" case of
+    // Annex L.7.3.
+    if (g_isBbmd) {
+        if (!SetUpBbmd()) {
             return 1;
         }
-    }
-
-    // 3) Now hand the port over - say WHICH Network Port performs the BBMD
-    //    function. A device can have several ports; the BBMD function belongs to a
-    //    specific BACnet/IP one. This must come AFTER the BDT is populated.
-    if (!BACnetStack_SetBBMD(g_deviceInstance, NETWORK_PORT_INSTANCE)) {
-        printf("Error: Failed to make Network Port 1 (Vermilion) a BBMD.\n");
-        return 1;
-    }
-
-    // Enable the three BBMD table properties on the Network Port so a client can
-    // ReadProperty them. These are OPTIONAL on a Network Port (required only when
-    // BACnet_IP_Mode is bbmd), and at this Stack Pin (6.x @ e6de4ffd) SetBBMD
-    // does NOT enable them for you (later 6.x, #3317, does - these calls become
-    // redundant once the pin moves past it) - so
-    // without these calls, reading BBMD_Broadcast_Distribution_Table returns
-    // unknown-property even though the BBMD is fully functional. This is the exact
-    // "serving is not enough, you must enable" trap the Description property teaches
-    // above. The property IDs are not in the shared example constants, so name them
-    // here from the stack's BACnetPropertyIdentifier enum - keep these in sync with
-    // that enum (bbmdAcceptFdRegistrations/bbmdBroadcastDistributionTable/
-    // bbmdForeignDeviceTable); a stack renumber would not be caught at compile time.
-    // Note: reading BBMD_Accept_FD_Registrations always returns true here - the
-    // stack generates it as a constant, it does not reflect a configurable setting.
-    static const uint32_t PROP_BBMD_ACCEPT_FD_REGISTRATIONS = 413;
-    static const uint32_t PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE = 414;
-    static const uint32_t PROP_BBMD_FOREIGN_DEVICE_TABLE = 415;
-    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE, true) ||
-        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_FOREIGN_DEVICE_TABLE, true) ||
-        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_ACCEPT_FD_REGISTRATIONS, true)) {
-        printf("Error: Failed to enable the BBMD table properties on Network Port 1.\n");
-        return 1;
+    } else {
+        printf("FYI: started with --no-bbmd: a plain BACnet/IP device, not a BBMD.\n");
     }
 
     // Who-Is is answered automatically. The spec also requires a device to
@@ -1332,38 +1580,6 @@ int main(int argc, char** argv) {
 
     printf("FYI: Device %u (\"%s\") ready. Vendor ID %u. Press 'h' for help.\n",
            g_deviceInstance, DEVICE_NAME, VENDOR_IDENTIFIER);
-
-    // Print the BDT the stack is actually holding, read back through the stack's
-    // own getter rather than from our seed list - so what you see is what the BBMD
-    // will really use. Entry [0] is this device itself.
-    printf("FYI: this device is a BBMD. Broadcast Distribution Table:\n");
-    // Iterate exactly the entries we added (our own + the peers). Do NOT probe
-    // upwards until GetBDTEntry fails: an out-of-range index is a real error to
-    // the stack and it logs one, so a probe loop prints a spurious error at the
-    // end of an otherwise healthy start-up.
-    //
-    // GetBDTEntry now returns uint32_t, not bool: the number of bytes written to
-    // ipAddress (always 6 on success), or 0 on failure (out-of-range index, a NULL
-    // pointer, a wrong length, or a networkPortInstance that does not match any
-    // claimed IPv4 Network Port). `if (!GetBDTEntry(...))` compiles but forces the
-    // uint32_t through a bool conversion (/W4 C4800) - compare to 0 explicitly.
-    const uint16_t bdtEntryCount = 1 /* this device */ +
-        (uint16_t)(sizeof(bdtSeeds) / sizeof(bdtSeeds[0]));
-    for (uint16_t i = 0; i < bdtEntryCount; ++i) {
-        uint8_t bip[6] = { 0, 0, 0, 0, 0, 0 }; // 6 octets: IP[4] + UDP port[2]
-        uint8_t mask[4] = { 0, 0, 0, 0 };
-        if (BACnetStack_GetBDTEntry(NETWORK_PORT_INSTANCE, i, bip, sizeof(bip), mask, sizeof(mask)) == 0) {
-            printf("      [%u] <could not be read back>\n", i);
-            continue;
-        }
-        const uint16_t peerPort = (uint16_t)((bip[4] << 8) | bip[5]);
-        printf("      [%u] %u.%u.%u.%u:%u  mask %u.%u.%u.%u%s\n", i,
-               bip[0], bip[1], bip[2], bip[3], peerPort,
-               mask[0], mask[1], mask[2], mask[3],
-               (i == 0) ? "   <- this device" : "");
-    }
-    printf("      (the Foreign Device Table starts empty and fills in as remote\n"
-           "       devices send Register-Foreign-Device to this BBMD.)\n");
 
     // --- Run the stack ------------------------------------------------------
     // BACnetStack_Tick() processes incoming messages and timers. Call it

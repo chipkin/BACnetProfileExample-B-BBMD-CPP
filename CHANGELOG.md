@@ -5,6 +5,64 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - unreleased
+
+Profile-functional: the example now carries broadcasts between BBMDs it is told
+about, and Wire Tests prove it (series glossary, `docs/GLOSSARY.md`).
+
+### Added
+
+- **`--bdt <ip>[:<port>][/<mask>]`** (repeatable): the peer BBMDs of the
+  Broadcast Distribution Table. Port defaults to 47808, mask to
+  255.255.255.255 (two-hop). Listing this device's own address sets the mask
+  of its own entry.
+- **ReinitializeDevice callback** (ACTIVATE_CHANGES and WARMSTART; other states
+  refused), on the B-SCHUB pattern. Cl. 12.56.38 makes a written
+  `BBMD_Broadcast_Distribution_Table` effective on exactly those two states, so
+  a BBMD with a writable BDT has to execute them. ReinitializeDevice is now in
+  `Protocol_Services_Supported`.
+- **`--no-bbmd`**: start as a plain BACnet/IP device (`BACnet_IP_Mode` =
+  `normal`, every BBMD message NAKed) - Annex L.7.3's "capable of being
+  reconfigured as a non-BBMD".
+- **Wire Tests** (`tests/`, Python standard library only), run by
+  `python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD`:
+  `forwarding_test.py` (a Who-Is from a foreign device on BBMD A reaches a
+  foreign device on BBMD B and B's I-Am comes back; K.6.6's five peers and
+  five foreign devices), `tables_test.py` (Read-BDT, Read-FDT,
+  Delete-FDT-Entry, Write-BDT NAK X'0010', WriteProperty of
+  `BBMD_Broadcast_Distribution_Table` + ReinitializeDevice ACTIVATE_CHANGES taking
+  effect), `failure_modes_test.py`
+  (a silent foreign device purged after TTL + 30 s and then refused with NAK
+  X'0060', a full FDT refusing a registration with NAK X'0030', `--no-bbmd`).
+  Each check was run against a build with its feature removed and failed
+  (`tests/README.md`).
+- `wiretest/` 0.2.0, the series' shared Wiretest Harness, vendored from
+  B-RTR (0.1.0) and extended with the Annex J BVLL messages (its own
+  `CHANGELOG.md`).
+- `TODO.md`: the gaps outside this example the Wire Tests report, and what to
+  change when the Stack Pin moves.
+- `release.yml` runs the Wire Tests on Linux after the smoke test.
+
+### Changed
+
+- **This device's own BDT entry is now two-hop (255.255.255.255), not its
+  subnet mask.** The stack reads its own entry's mask to decide whether a
+  Forwarded-NPDU from a peer must be re-broadcast locally (J.4.5); with the
+  subnet mask it assumed every Forwarded-NPDU had arrived by directed
+  broadcast and never re-broadcast one, and J.4.3.2 requires one subnet to
+  have the same mask in every BDT. The README said the own entry's mask was
+  "never used" - it is.
+- The placeholder peers (192.0.2.10 / 192.0.2.20, RFC 5737) are gone; the BDT
+  holds exactly this device plus the `--bdt` peers.
+- The BBMD set-up moved from `main()` into `SetUpBbmd()`. The BDT is printed
+  before the `ready` line.
+- Corrected: the stack does make `BBMD_Broadcast_Distribution_Table`
+  writable at this pin (cl. 12.56.38) - the 1.1.2 notes said the example did
+  not make it writable. At this pin the write takes effect when it is
+  acknowledged, not on ReinitializeDevice as cl. 12.56.38 requires (a stack
+  deviation, `TODO.md`).
+- APP_VERSION 1.1.2 -> 1.2.0.
+
 ## [1.1.2] - unreleased
 
 ### Changed - honesty pass (2026-10-14)

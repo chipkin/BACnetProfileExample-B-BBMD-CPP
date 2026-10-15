@@ -27,6 +27,14 @@ This repository is self-contained:
   hand-edit between the `OBJECTS-PROPERTIES` markers.
 - `docs/objects.json` - the input to that generator. Update it in the same change
   as any `main.cpp` change that adds an object or a `GetProperty*` branch.
+- `tests/` - the Wire Tests (Python 3, standard library only) and their
+  README, which records the run showing each check fails without its feature.
+- `wiretest/` - the series' shared Wiretest Harness (vendored, like `common/`;
+  own `WIRETEST_VERSION` and `CHANGELOG.md`). Never put BBMD-specific code in
+  it - that belongs in `tests/`. Change it generically, bump its version, and
+  re-copy it to every example that vendors it.
+- `TODO.md` - known gaps outside this example (stack, `common/`) that the Wire
+  Tests report as `[KNOWN GAP]`, and what to change when the Stack Pin moves.
 - `submodules/cas-bacnet-stack/` - the **CAS BACnet Stack** as a git submodule
   (private; compiled from source). After cloning, run
   `git submodule update --init --recursive`.
@@ -56,8 +64,8 @@ commands above.
 ## Run
 
 ```bash
-./build/BACnetExampleBBBMD [--port 47808] [--deviceID 389020]   # Linux/macOS
-.\build\Release\BACnetExampleBBBMD.exe [--port 47808] [--deviceID 389020]   # Windows
+./build/BACnetExampleBBBMD [--port 47808] [--deviceID 389020] [--bdt <ip>[:<port>][/<mask>]]... [--no-bbmd]   # Linux/macOS
+.\build\Release\BACnetExampleBBBMD.exe [same options]   # Windows
 ```
 
 Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1.
@@ -74,7 +82,11 @@ Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1
   same in every example that has it). If you change them here, they must change in
   every example that shares them — prefer not to.
 - **The BBMD function is the stack's job.** Do not write forwarding logic. The
-  application only configures the tables and reports `BACnet_IP_Mode` = `bbmd`.
+  application only configures the tables (`--bdt`, in `SetUpBbmd()`) and reports
+  `BACnet_IP_Mode` = `bbmd` (`normal` with `--no-bbmd`).
+- **This device's own BDT entry is two-hop (255.255.255.255).** The stack reads
+  its own entry's mask to decide whether to re-broadcast a peer's Forwarded-NPDU
+  locally (Annex J.4.5). Do not change it back to the subnet mask.
 - **Never edit `common/` in this repo alone** - it is a vendored copy shared by
   every example in the series, with its own version (`COMMON_VERSION`) and
   changelog (`common/CHANGELOG.md`). To change it: edit, bump the version, add
@@ -112,26 +124,31 @@ build (`/W4`) flags as `C4800`.
 
 ## How to verify a change
 
-There are no unit tests; verification is behavioural:
+1. Build, then run the **Wire Tests** - they are the gate:
 
-1. Build, then run one instance on a clear UDP port.
-2. Confirm start-up prints the BDT with **this device as entry [0]** and no stack
-   errors. If `SetBBMD` failed the process exits non-zero — that alone catches
-   both traps above.
-3. With a BACnet client (e.g. the CAS BACnet Explorer), send **Who-Is** and
-   confirm **I-Am** from device 389020.
-4. **ReadProperty** `Network Port 1` `BACnet_IP_Mode` → must be `bbmd` (2), not
-   `normal`. This is what tells a client the port performs the BBMD function.
-5. **ReadProperty** every required property of every object; confirm
+   ```bash
+   python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD
+   ```
+
+   `ALL WIRE TESTS PASSED` (exit 0) after about two minutes. Linux is the
+   reference (it is what `release.yml` runs); on Windows the tests pass more
+   slowly because the example's socket misses datagrams there (`TODO.md`).
+2. **A behavioural change needs a check that fails without it.** Break the
+   feature on purpose, rebuild, and confirm a Wire Test fails; record the run
+   in `tests/README.md`'s table. A test that cannot fail proves nothing.
+3. A `[KNOWN GAP]` line is a defect outside this example (`TODO.md`). If one
+   prints `[GAP CLOSED]`, the defect is fixed: make it a counted `record()`
+   check and update `TODO.md`.
+4. With a BACnet client (e.g. the CAS BACnet Explorer): Who-Is -> I-Am from
+   389020; ReadProperty every required property of every object; confirm
    `Protocol_Revision` is 30 and `Object_List` lists all eight objects.
-6. Exercise DM-DCC-B: DeviceCommunicationControl `disable-initiation` is accepted;
-   the plain `disable` is answered `service-request-denied` at Protocol_Revision
-   ≥ 20 (a deprecation the stack applies, not a bug here).
-7. A true end-to-end NM-BBMDC-B test needs **two subnets and two BBMDs**, which is
-   beyond a single-host example. Point real peer BBMDs at each other by editing
-   `bdtSeeds`, then confirm a Who-Is broadcast on one subnet produces an I-Am from
-   a device on the other.
-8. If you changed the objects or their properties, regenerate `docs/PICS.md`
+5. Exercise DM-DCC-B: DeviceCommunicationControl `disable-initiation` is
+   accepted; the plain `disable` is answered `service-request-denied` at
+   Protocol_Revision >= 20 (a deprecation the stack applies, not a bug here).
+6. The local re-broadcast onto a real second subnet is not covered on one host
+   (README "Wire Tests"); test it by hand with two BBMDs on two IP subnets when
+   the BBMD code changes in a way that could affect it.
+7. If you changed the objects or their properties, regenerate `docs/PICS.md`
    (`python tools/gen-objects-properties.py BACnetProfileExample-B-BBMD-CPP` from
    the series root) and confirm no row comes out flagged with ⚠.
 

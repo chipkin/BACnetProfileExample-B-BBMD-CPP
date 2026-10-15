@@ -44,36 +44,58 @@ change them at all.
 
 ## Configure it for your site
 
-The peer addresses in `main.cpp` are **placeholders** from the documentation
-range (RFC 5737 TEST-NET-1), deliberately chosen so they cannot collide with a
-real device if you run the example as-is - they are unreachable, so the stack
-simply logs the failed forwards rather than disturbing anyone's network.
+Give the example its peer BBMDs on the command line - one `--bdt` per remote
+subnet:
 
-Edit `bdtSeeds` in `main.cpp` to list your real peer BBMDs - one entry per
-remote subnet. **You do not list this device in `bdtSeeds`:** the example
-computes this BBMD's own entry from its live interface and adds it as entry
-`[0]` automatically (Trap 2 below explains why the self-entry must exist).
+```bash
+./build/BACnetExampleBBBMD --bdt 192.168.2.10 --bdt 192.168.4.10:47809
+```
 
-Each entry carries a **broadcast-distribution mask** alongside the IP + port,
-and it is a real per-entry decision:
+**You do not list this device:** the example computes this BBMD's own entry
+from its live interface and adds it as entry `[0]` automatically (Trap 2 below
+explains why the self-entry must exist). A real product would load the same
+list from its own configuration store; `SetUpBbmd()` in `main.cpp` is the code
+to copy.
+
+Each entry carries a **broadcast-distribution mask** alongside the IP + port
+(`--bdt <ip>[:<port>][/<mask>]`), and it is a real per-entry decision:
 
 - `255.255.255.255` = **two-hop**: you unicast the broadcast to the peer BBMD
   and it re-broadcasts onto its own subnet. This is the normal, router-friendly
-  choice, and what `bdtSeeds` uses for every peer. Use this unless you have a
-  specific reason not to.
+  choice, and the default. Use it unless you have a specific reason not to.
 - *the peer's real subnet mask* = **one-hop**: you send a directed broadcast
   straight onto the peer's subnet. It needs the intervening routers to forward
   directed broadcasts, which most are configured **not** to do - so this usually
   fails silently.
 
-A real product would load this table from its configuration. Over BACnet,
-Annex J.4.4 is explicit that the BDT "shall be supplied by writing to the
-BBMD_Broadcast_Distribution_Table property of the Network Port Object" - that
-is, **WriteProperty**, not the `Write-Broadcast-Distribution-Table` BVLL
-message. J.4.4.2 requires every B/IP device to answer that BVLL message with a
-BVLC-Result of `X'0010'` (NAK), and the stack does. This example does not make
-`BBMD_Broadcast_Distribution_Table` writable, so its BDT is set at start-up
-only.
+**Every BBMD must give one subnet the same mask** (Annex J.4.3.2: "The
+broadcast distribution masks referring to the same IP subnet shall be
+identical in each BDT"). That includes this device's own entry: the stack
+reads it to decide whether a peer's Forwarded-NPDU arrived by unicast (so it
+must re-broadcast it here) or by directed broadcast (so everyone here already
+has it) - Annex J.4.5. The own entry is two-hop by default. If the peers reach
+this subnet one-hop, list this device's own address with that mask too
+(`--bdt <this IP>:<port>/255.255.255.0`).
+
+Over BACnet, Annex J.4.4 is explicit that the BDT "shall be supplied by
+writing to the BBMD_Broadcast_Distribution_Table property of the Network Port
+Object" - that is, **WriteProperty**, not the `Write-Broadcast-Distribution-Table`
+BVLL message. J.4.4.2 requires every B/IP device to answer that BVLL message
+with a BVLC-Result of `X'0010'` (NAK), and the stack does. The stack makes the
+property writable (cl. 12.56.38 requires it of a BBMD). Cl. 12.56.38 also says
+the written value becomes effective only when the device receives
+ReinitializeDevice ACTIVATE_CHANGES or WARMSTART - which is why this example
+registers a ReinitializeDevice callback even though no B-BBMD BIBB names
+DM-RD-B. (At this Stack Pin the stack applies the write at once anyway; see
+`TODO.md`. Send ACTIVATE_CHANGES regardless, so your tool keeps working when
+the stack is fixed.) The written list must still contain this device's own
+entry, or the stack refuses it with `value-out-of-range`.
+`tests/tables_test.py` shows the encoding of both requests.
+
+`--no-bbmd` starts the same device as a plain BACnet/IP device. Annex L.7.3
+requires a device that is a BBMD "along with some other BACnet functionality"
+to be capable of being reconfigured as a non-BBMD; in a product that is a
+configuration setting read at start-up, as here.
 
 ## Three traps worth knowing before you copy this
 
@@ -188,10 +210,14 @@ rather than against "it looked fine in the explorer":
 7. Exercise DM-DCC-B: `DeviceCommunicationControl` `disable-initiation` is
    accepted; the plain `disable` is answered `service-request-denied` at
    Protocol_Revision >= 20 - a deprecation the stack applies, not a bug here.
-8. A true end-to-end NM-BBMDC-B test needs **two subnets and two BBMDs**, which
-   is inherent to the profile and beyond a single-host example. Point real peer
-   BBMDs at each other by editing `bdtSeeds`, then confirm a Who-Is broadcast on
-   one subnet produces an I-Am from a device on the other.
+8. Run the Wire Tests (`python3 tests/run_wire_tests.py --exe <your build>`,
+   [tests/README.md](tests/README.md)). They prove the BBMD function on one
+   host: a broadcast from a foreign device on one instance reaches a foreign
+   device on another. After you change the BBMD code, break the feature you
+   changed on purpose and confirm a Wire Test fails - a test that cannot fail
+   proves nothing. A test across **two real IP subnets** (two BBMDs, a device
+   behind each) is still worth doing by hand before a product ships: it is the
+   only way to see the local re-broadcast reach real devices.
 
 ### Keeping the PICS honest
 
@@ -219,7 +245,7 @@ and not in `accepted`, comes out as a ⚠ row - that is a defect, not a feature.
 
 | Symptom | Cause / fix |
 |---------|-------------|
-| On start-up the app prints a wall of red `Error:` lines but the device works | **Expected - this is not your bug.** Two benign sources, both from the stack's own debug logging: (1) the device receives its **own** broadcast I-Am and logs a decode cascade (*"Services is not supported service=[0]"* ... *"Failed to process the incoming NPDU"*) - any BACnet/IP device that listens for broadcasts hears itself; (2) a one-time *"UUID has not been set. A UUID must be set for the BACnetSC device to start."* - the stack starts a BACnet/SC datalink these IP-only examples never configure. It appears once and does not spam. Separately, the two documentation-range placeholder BDT peers are unreachable by design (see [Configure it for your site](#configure-it-for-your-site)), so `Error occurred while sending the encoded packet` for those two peers is also expected until you point `bdtSeeds` at real hosts. |
+| The app prints red `Error:` lines but the device works | **Usually expected - the stack's own debug logging.** Common benign ones: (1) the device receives its **own** broadcast I-Am and logs a decode cascade (*"Services is not supported service=[0]"* ... *"Failed to process the incoming NPDU"*) - any BACnet/IP device that listens for broadcasts hears itself; (2) a one-time *"UUID has not been set. A UUID must be set for the BACnetSC device to start."* - the stack starts a BACnet/SC datalink these IP-only examples never configure; (3) `Error occurred while sending the encoded packet` when a `--bdt` peer is unreachable; (4) `foreign device table is full ... refusing new entry` - the FDT holds 128 entries and the registration was refused with NAK X'0030', as Annex J.5.2.2 requires. |
 | `Error: Broadcast Distribution Table is not configured with host device entry` / `Error: Failed to UpdateHostBDTIndex, aborting BBMD setup` | Trap 1 or Trap 2 above: a 4-octet (not 6-octet) BDT address, or `SetBBMD` called before the BDT (including the self-entry) is fully populated. |
 | `ReadProperty` of `BBMD_Broadcast_Distribution_Table` / `BBMD_Foreign_Device_Table` returns `unknown-property` | Trap 3 above: those properties need an explicit `SetPropertyEnabled` after `SetBBMD` - it does not enable them for you. |
 | CMake error: *"CAS BACnet Stack adapter not found under: ..."* | Submodules not initialized. Run `git submodule update --init --recursive` (or pass `-D CAS_STACK_DIR=...`). |
