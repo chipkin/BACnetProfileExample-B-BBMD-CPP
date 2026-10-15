@@ -18,7 +18,7 @@ capability the profile exists for - forwards broadcasts between subnets as a
   Statement: every object, every property, and who answers it.
 
 > **Versions:** this document describes **example v1.2.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `e6de4ffd`), at
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
 > **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
@@ -45,9 +45,9 @@ write forwarding logic. You build the BDT (`BACnetStack_AddBDTEntry`), then
 hand the port over (`BACnetStack_SetBBMD`). From then on the stack does the
 Forwarded-NPDU work, answers Read-Broadcast-Distribution-Table /
 Read-Foreign-Device-Table, and adds, ages out, and removes FDT entries as
-foreign devices register and expire. The application's only other job is
-reporting `BACnet_IP_Mode` = `bbmd` - which is how a client discovers that
-this port performs the BBMD function.
+foreign devices register and expire. `SetBBMD` also makes the port report
+`BACnet_IP_Mode` = `bbmd` - which is how a client discovers that this port
+performs the BBMD function - and turns on its BBMD table properties.
 
 ## The device this example creates
 
@@ -69,7 +69,9 @@ device is a BBMD with no peers - it still accepts foreign devices and passes
 their broadcasts to its own subnet and to each other. A client can replace the
 table at run time by writing the Network Port's
 `BBMD_Broadcast_Distribution_Table` (Annex J.4.4) and sending ReinitializeDevice
-ACTIVATE_CHANGES (cl. 12.56.38). `--no-bbmd` starts it as a
+ACTIVATE_CHANGES (cl. 12.56.38), and stop it accepting foreign devices the
+same way, by writing `BBMD_Accept_FD_Registrations` FALSE (cl. 12.56.39).
+`--no-bbmd` starts it as a
 plain BACnet/IP device instead (Annex L.7.3 requires a BBMD that also does
 other BACnet work to be able to be reconfigured as a non-BBMD).
 
@@ -111,7 +113,7 @@ trending.
 | Who-Is / I-Am | Answers Who-Is with I-Am, and broadcasts an I-Am on start-up (DM-DDB-B). |
 | Who-Has / I-Have | Answers Who-Has with I-Have (DM-DOB-B). |
 | DeviceCommunicationControl | Stops/resumes communication, with an optional password (DM-DCC-B). |
-| ReinitializeDevice | ACTIVATE_CHANGES and WARMSTART only: what makes a written BDT effective (cl. 12.56.38). Other states are refused. |
+| ReinitializeDevice | ACTIVATE_CHANGES and WARMSTART only: what makes a written BDT or `BBMD_Accept_FD_Registrations` effective (cl. 12.56.38, 12.56.39). Other states are refused. |
 | BBMD (Annex J BVLL: Forwarded-NPDU, Distribute-Broadcast-To-Network, Register-Foreign-Device, Read-BDT, Read-FDT, Delete-FDT-Entry; Write-BDT answered with NAK X'0010') | Handled entirely by the stack once the Network Port is handed over with `SetBBMD` (NM-BBMDC-B). The BDT is configured with `--bdt` at start-up, or by WriteProperty of `BBMD_Broadcast_Distribution_Table`. |
 
 ### Object types
@@ -319,14 +321,18 @@ other instance's console as a Forwarded-NPDU it received from its peer. Point a
 client at one of them as a **foreign device** (Register-Foreign-Device), send a
 Who-Is, and the I-Am from the *other* instance comes back through both BBMDs.
 
-The peers are named at `127.0.0.1`, not the LAN address, for a reason that
-only exists on one host. Annex J.4.5 says a Forwarded-NPDU from a sender "on
-the same IP subnet" was already heard by every device there, and the stack
-judges "same subnet" from the sender's IP. Two instances on one machine share
-one IP, so a Forwarded-NPDU between them over the LAN address looks local and
-is not passed on. Over `127.0.0.1` it arrives from a different address, exactly
-as it would from a peer on another subnet. On a real site, use each peer's own
-address.
+The peers are named at `127.0.0.1`, not the LAN address, so that the two
+instances behave like BBMDs on **two different subnets** - the case BBMDs
+exist for. Annex J.4.5 says a Forwarded-NPDU from a sender "on the same IP
+subnet" was already heard by every device there, and the stack judges "same
+subnet" from the sender's IP. Two instances on one machine share one IP, so
+over the LAN address each would treat the other as a BBMD on its own subnet:
+it still passes the other's broadcasts to its foreign devices (J.4.5), but
+does not re-broadcast them locally. Over `127.0.0.1` the datagram arrives from
+a different address, exactly as from a peer on another subnet, so the
+two-hop local re-broadcast happens too. Naming the peers at the LAN address
+also works - that is "two BBMDs on one subnet", and the Wire Tests check it.
+On a real site, use each peer's own address.
 
 ## Wire Tests
 
@@ -362,8 +368,12 @@ proves, and the run that showed each check fails without its feature, is in
 - **Failure Modes** (`failure_modes_test.py`): a foreign device that stops
   re-registering is purged after its Time-to-Live plus 30 seconds and its
   broadcasts are refused (NAK X'0060'); a full Foreign Device Table refuses the
-  next registration (NAK X'0030'); and `--no-bbmd` answers every BBMD message
-  with the NAK Annex J requires of a non-BBMD.
+  next registration (NAK X'0030'); `BBMD_Accept_FD_Registrations` written
+  FALSE and activated with ReinitializeDevice ACTIVATE_CHANGES refuses every
+  registration (NAK X'0030') until it is written TRUE again; and `--no-bbmd`
+  answers every BBMD message with the NAK Annex J requires of a non-BBMD.
+- **Two BBMDs on one subnet** (`forwarding_test.py`): peered at the shared LAN
+  address, B still passes A's Forwarded-NPDU to its foreign device (J.4.5).
 
 What the Wire Tests do **not** show:
 
@@ -372,19 +382,15 @@ What the Wire Tests do **not** show:
   stack's unit tests (`tests/BACnetBBMDTests.cpp` in the stack) also cover the
   re-broadcast logic. A real two-subnet test - two BBMDs on two IP subnets, a
   device behind each - is done by hand when needed.
-- **Peers that share one IP address.** J.4.5 says that a BBMD receiving a
-  Forwarded-NPDU from a peer on its own subnet must still pass it to its
-  foreign devices. Stack `6.x` @ `e6de4ffd` drops it instead. The test reports
-  this as a `[KNOWN GAP]` (see [TODO.md](TODO.md)); it is why the one-host
-  setup above names peers at `127.0.0.1`.
+  On Linux the test reports it as a `[KNOWN GAP]` today: the vendored `common/` sends
+  B's re-broadcast to B's own address (stack
+  [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933),
+  [TODO.md](TODO.md)).
 - **A BDT write waiting for ReinitializeDevice.** Cl. 12.56.38 says a written
   BDT becomes effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART;
-  stack `6.x` @ `e6de4ffd` applies it at once. Reported as a `[KNOWN GAP]`
-  ([TODO.md](TODO.md)).
-- **`BBMD_Accept_FD_Registrations` = FALSE.** At this Stack Pin that property
-  always reads TRUE and is not writable, so a BBMD that refuses all
-  registrations cannot be configured. Stack `6.x` after `e6de4ffd` makes it
-  writable (#3321); see [TODO.md](TODO.md).
+  stack `6.x` @ `64b2cfac5` applies it at once
+  ([#3930](https://github.com/chipkin/cas-bacnet-stack/issues/3930)). Reported
+  as a `[KNOWN GAP]` ([TODO.md](TODO.md)).
 
 On Windows the tests pass, but more slowly: the example's socket misses some
 incoming datagrams there (see [TODO.md](TODO.md)), so the tests repeat any

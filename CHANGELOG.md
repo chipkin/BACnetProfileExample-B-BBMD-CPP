@@ -10,6 +10,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Profile-functional: the example now carries broadcasts between BBMDs it is told
 about, and Wire Tests prove it (series glossary, `docs/GLOSSARY.md`).
 
+### Changed - Stack Pin `6.x` @ `64b2cfac5` (2026-10-15)
+
+- **Stack Pin moved `e6de4ffd` -> `6.x` @ `64b2cfac5`** (still reports 6.0.23),
+  per docs/adr/0001. That `6.x` now carries stack #3850, so a customer
+  (non-test-tool) build links again. Builds with no call-site change: Windows
+  static (`ReleaseLib|x64`) and Linux (WSL2).
+- **`BACnet_IP_Mode` is no longer served by the application, and the three
+  BBMD properties are no longer enabled by it.** `SetBBMD` now does both
+  (stack #2548, #3317). The callback branch and the three `SetPropertyEnabled`
+  calls are removed; TUTORIAL's "Trap 3" is gone.
+- **`BBMD_Accept_FD_Registrations` is writable** (stack #3321, cl. 12.56.39) as a
+  pending change that the example's ReinitializeDevice callback lets the stack
+  activate. New Failure Mode Wire Test (`failure_modes_test.py`, its own
+  instance on `--port` + 23): written FALSE, `Changes_Pending` TRUE and
+  registrations still accepted; after ACTIVATE_CHANGES, Register-Foreign-Device
+  NAK X'0030' (J.5.2.2); written TRUE and activated, accepted again.
+- **Gap closed: two BBMDs on one IP subnet.** With the peers at the shared LAN
+  address B now passes A's Forwarded-NPDU to its foreign devices (J.4.5, stack
+  #3651). The `[KNOWN GAP]` is a counted check in `forwarding_test.py`. The
+  one-host setup keeps naming peers at `127.0.0.1`: that is what makes the two
+  instances behave like BBMDs on different subnets, so the two-hop local
+  re-broadcast is exercised; README says so.
+- `BACnetStack_ActivateNetworkPortPendingChanges` (stack #2866) is not called:
+  its contract makes it the host's own start-up activation and forbids calling
+  it from inside a stack callback, and a received ReinitializeDevice already
+  runs the same pass. Noted in `main.cpp` and TUTORIAL.
+- Still open, still `[KNOWN GAP]`: the BDT write is not pending (stack #3930)
+  and B's local re-broadcast goes to B's own address (stack #3933 / `common/`).
+- Wire Tests 2026-10-15: Windows static and Linux, forwarding 14/14, tables
+  21/21 (1 known gap), failure modes 25/25 (Linux forwarding also reports the
+  re-broadcast known gap). Every new or converted check fails with its
+  feature removed - one `main.cpp` and four stack mutations, `tests/README.md`.
+
 ### Added
 
 - **`--bdt <ip>[:<port>][/<mask>]`** (repeatable): the peer BBMDs of the

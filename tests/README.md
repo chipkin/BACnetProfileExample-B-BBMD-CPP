@@ -22,7 +22,7 @@ It runs the three scripts below one after another and ends with
 `ALL WIRE TESTS PASSED` (exit 0) or the scripts that failed, after about two
 minutes. Each script also runs on its own with the same `--exe` / `--port`
 options; `--port` (default 47900) moves the whole set of UDP ports (each script
-uses a few above it: +0..+4, +10, +20..+22).
+uses a few above it: +0..+4, +10, +20..+23).
 
 A `[KNOWN GAP]` line is a requirement the example does not meet yet because of
 a defect outside it (the stack or `common/`). It is reported on every run but
@@ -50,8 +50,7 @@ foreign device F2   LAN-IP : ephemeral    registered with B
 
 The peers are named at `127.0.0.1`: two instances on one host share one IP,
 and Annex J.4.5 tells a BBMD that a Forwarded-NPDU from its own subnet needs no
-local re-broadcast - the stack judges that from the sender's IP, and (a stack
-defect, `TODO.md`) then passes it to no foreign device either. Over
+local re-broadcast - the stack judges that from the sender's IP. Over
 `127.0.0.1` the datagram arrives from a different address, as from a peer on
 another subnet. The Peers are Python, never another example's binary.
 
@@ -69,10 +68,12 @@ another subnet. The Peers are Python, never another example's binary.
 - **K.6.6 minimums,** on a third instance: five Python peer BBMDs in its BDT
   each get the Forwarded-NPDU, and five registered foreign devices - a
   broadcast from one reaches the other four.
+- **Two BBMDs on one subnet:** with the peers named at the shared LAN address,
+  F1 and F2 register, and B still passes A's Forwarded-NPDU to F2 (J.4.5; stack
+  #3651 - `6.x` @ `e6de4ffd` dropped it, and this was a known gap until the pin
+  moved to `64b2cfac5`).
 - KNOWN GAP (Linux/macOS): B re-broadcasts the Forwarded-NPDU on its own subnet
-  (`common/` 3.3.0 sends it to B itself).
-- KNOWN GAP: with the peers named at the shared LAN address, B passes A's
-  Forwarded-NPDU to F2 (the stack drops it).
+  (`common/` 3.3.0 sends it to B itself; stack #3933).
 
 ## `tables_test.py` - managing the tables (J.4.4, J.5.2)
 
@@ -93,7 +94,7 @@ own entry gets an Error and the table is unchanged.
 
 KNOWN GAP: between the write and ReinitializeDevice, cl. 12.56.38 wants
 `Changes_Pending` TRUE and the old table still in force; the pinned stack has
-already applied the write.
+already applied the write (stack #3930).
 
 ## `failure_modes_test.py` - Failure Modes
 
@@ -110,6 +111,13 @@ already applied the write.
 - **Reconfigured as a non-BBMD** (`--no-bbmd`, Annex L.7.3): `BACnet_IP_Mode`
   reads `normal`; Register-Foreign-Device, Read-BDT, Read-FDT and
   Delete-FDT-Entry get NAK `X'0030'`, `X'0020'`, `X'0040'` and `X'0050'`.
+- **Configured not to accept foreign devices** (J.5.2.2, cl. 12.56.39), on its
+  own instance: `BBMD_Accept_FD_Registrations` reads TRUE; written FALSE it
+  gets a SimpleACK and `Changes_Pending` reads TRUE, and a registration is
+  still accepted (the write is pending); ReinitializeDevice ACTIVATE_CHANGES
+  gets a SimpleACK, `Changes_Pending` reads FALSE, and the next
+  Register-Foreign-Device gets NAK `X'0030'`; written TRUE and activated again,
+  a registration is accepted.
 
 ## Each check fails without its feature
 
@@ -129,11 +137,28 @@ gave the same results.
 | | `tables_test.py` | 17/21 - Read-BDT and the BDT property lack the peer; the first-peer control fails |
 | Own BDT entry with the subnet mask (the 1.1.2 behaviour) | `forwarding_test.py` | 10/12 - A's and B's own entries read `255.255.255.0` |
 | | `tables_test.py` | 13/21 - the own-entry mask; the two-hop BDT write is refused (value-out-of-range, its own entry no longer matches) |
-| The three BBMD table properties not enabled | `tables_test.py` | 15/21 - ReadProperty and WriteProperty of `BBMD_Broadcast_Distribution_Table` get unknown-property, so the second peer is never added |
 | ReinitializeDevice callback not registered | `tables_test.py` | 20/21 - ACTIVATE_CHANGES is answered Abort(other) |
-| `BACnet_IP_Mode` always `bbmd` | `failure_modes_test.py` | 16/17 - `--no-bbmd` reads `bbmd` |
 | `--no-bbmd` ignored | `failure_modes_test.py` | 12/17 - `--no-bbmd` reads `bbmd` and answers every BBMD message as a BBMD |
 
-The B re-broadcast, same-IP and BDT-pending checks are `[KNOWN GAP]`s, not counted; they
+Rows dropped at the move to stack `6.x` @ `64b2cfac5`: "the three BBMD table
+properties not enabled" and "`BACnet_IP_Mode` always `bbmd`" mutated code
+`main.cpp` no longer has - `SetBBMD` does both now (stack #2548, #3317). Those
+checks are pinned to the stack instead, below.
+
+Run 2026-10-15 against stack `6.x` @ `64b2cfac5`. The `main.cpp` mutation on the
+Windows static build; the stack mutations on the Linux (WSL2) build, which
+compiles the stack's sources into the example, so a reverted stack fix is one
+rebuild. Each was restored afterwards and the full suite passed again on both.
+
+| Without | Script | Result |
+|---|---|---|
+| ReinitializeDevice callback not registered (`main.cpp`) | `failure_modes_test.py` | 19/25 - the `BBMD_Accept_FD_Registrations` write is answered Abort, `Changes_Pending` stays FALSE, ACTIVATE_CHANGES is refused, and registrations are still accepted |
+| Stack #3321: a FALSE `BBMD_Accept_FD_Registrations` not enforced (`BACnetDataLinkIPv4.cpp`) | `failure_modes_test.py` | 24/25 - the registration after ACTIVATE_CHANGES is accepted (`X'0000'`) instead of NAKed `X'0030'` |
+| Stack #3651/#2547: a same-subnet Forwarded-NPDU passed to no foreign device (`BACnetBBMD.cpp`, the old #467 early return) | `forwarding_test.py` | 13/14 - with the peers at the shared LAN address F2 receives nothing |
+| Stack #2548: `SetBBMD` leaves `BACnet_IP_Mode` `normal` (`BACnetDBDevice.cpp`) | `tables_test.py` | 20/21 - `BACnet_IP_Mode` reads `normal` (0) |
+| Stack #3317: `SetBBMD` does not enable the three BBMD properties (`BACnetDBDevice.cpp`) | `tables_test.py` | 15/21 - ReadProperty and WriteProperty of `BBMD_Broadcast_Distribution_Table` get unknown-property, so the second peer is never added |
+| | `failure_modes_test.py` | 20/25 - `BBMD_Accept_FD_Registrations` is unknown-property, so it cannot be read, written or activated |
+
+The B re-broadcast and BDT-pending checks are `[KNOWN GAP]`s, not counted; they
 fail today for reasons outside this example (`TODO.md`) and will print
 `[GAP CLOSED]` when those are fixed.

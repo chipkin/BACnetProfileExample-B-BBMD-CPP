@@ -124,7 +124,7 @@ def main():
         wiretest.known_gap("... the written BDT waits for ReinitializeDevice (cl. 12.56.38): Changes_Pending is "
                            "TRUE and the second peer is not served yet",
                            at_peer_2 is None and changes_pending == [(1, b"\x01")],
-                           f"stack 6.x @ e6de4ffd applies a BDT write at once (second peer served: "
+                           f"stack 6.x @ 64b2cfac5 applies a BDT write at once, #3930 (second peer served: "
                            f"{at_peer_2 is not None}; Changes_Pending {changes_pending})")
 
         answer = setup.reinitialize_device(client, bbmd, wiretest.REINITIALIZE_ACTIVATE_CHANGES)

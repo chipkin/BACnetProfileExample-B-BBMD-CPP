@@ -92,14 +92,29 @@ the stack is fixed.) The written list must still contain this device's own
 entry, or the stack refuses it with `value-out-of-range`.
 `tests/tables_test.py` shows the encoding of both requests.
 
+`BBMD_Accept_FD_Registrations` works the same way (cl. 12.56.39): write it
+FALSE and `Changes_Pending` goes TRUE; after ReinitializeDevice
+ACTIVATE_CHANGES every Register-Foreign-Device is refused with NAK `X'0030'`
+(Annex J.5.2.2) until it is written TRUE and activated again. The stack holds
+and applies that value itself; it refuses the write if no ReinitializeDevice
+callback is registered, since nothing could then ever activate it.
+`tests/failure_modes_test.py` shows the requests.
+
+The application does **not** call `BACnetStack_ActivateNetworkPortPendingChanges`
+from its ReinitializeDevice callback. That export is for a device to activate
+its own start-up configuration without a ReinitializeDevice; a received
+ReinitializeDevice already runs the same activation once the callback returns
+true, and the export's contract says not to call it from inside a stack
+callback.
+
 `--no-bbmd` starts the same device as a plain BACnet/IP device. Annex L.7.3
 requires a device that is a BBMD "along with some other BACnet functionality"
 to be capable of being reconfigured as a non-BBMD; in a product that is a
 configuration setting read at start-up, as here.
 
-## Three traps worth knowing before you copy this
+## Two traps worth knowing before you copy this
 
-All three cost real debugging time and fail in misleading ways:
+Both cost real debugging time and fail in misleading ways:
 
 **1. A BDT entry address is 6 octets, not 4 - and nothing checks this for you.**
 It is a BACnet/IP ("B/IP") address: the 4 IP octets followed by the **UDP port,
@@ -129,15 +144,13 @@ Error: Failed to UpdateHostBDTIndex, aborting BBMD setup
 The self-entry's port must be the port the device is actually listening on, so
 `main.cpp` builds it from `--port`, not a hardcoded `47808`.
 
-**3. `SetBBMD` does not make the BBMD tables readable - you must enable them.**
-The `BBMD_Broadcast_Distribution_Table`, `BBMD_Foreign_Device_Table`, and
-`BBMD_Accept_FD_Registrations` properties on the Network Port are *optional*, so
-they are not enabled automatically and `SetBBMD` does not enable them. Without
-an explicit `SetPropertyEnabled` for each, a client's `ReadProperty` of them
-returns `unknown-property` even though the BBMD is fully functional - the same
-"serving a value is not enough, you must enable the property" trap the
-Description property hits (see the note in `main.cpp` right before it). This
-example enables all three right after `SetBBMD`.
+**No longer a trap: `SetBBMD` makes the port look like a BBMD.** It sets
+`BACnet_IP_Mode` to `bbmd` and enables the `BBMD_Broadcast_Distribution_Table`,
+`BBMD_Foreign_Device_Table` and `BBMD_Accept_FD_Registrations` properties
+(stack #2548, #3317). Stacks up to and including 6.x @ `e6de4ffd` did
+neither, so code written against them serves `BACnet_IP_Mode` from a callback
+and calls `SetPropertyEnabled` for the three properties; both are now
+redundant, and this example does neither.
 
 Also worth knowing: do not probe `GetBDTEntry` upwards until it fails. An
 out-of-range index is a genuine error to the stack and it logs one, so a probe
@@ -160,7 +173,7 @@ It differs per type - this is the checklist, so you do not have to infer it:
 | Analog Output (commandable) | `Object_Name`, `Units`, `Relinquish_Default` | `Present_Value` and `Priority_Array` are resolved by the stack from the slots you serve through `GetPropertyReal` / `GetPropertyBool` |
 | Binary Output (commandable) | `Object_Name`, `Polarity`, `Relinquish_Default` | `Present_Value` / `Priority_Array` resolved by the stack from `GetPropertyEnumerated` / `GetPropertyBool` |
 | Multi-State Output (commandable) | `Object_Name`, `Number_Of_States`, `Relinquish_Default` | `Present_Value` / `Priority_Array` resolved by the stack from `GetPropertyUnsignedInteger` / `GetPropertyBool` |
-| Network Port | `Object_Name`, `Network_Type`, `Protocol_Level`, `Changes_Pending`, plus `IP_Address` / `IP_Subnet_Mask` / `IP_Default_Gateway` / `BACnet_IP_UDP_Port` | Because this port is a BBMD: enable `BBMD_Broadcast_Distribution_Table`, `BBMD_Foreign_Device_Table`, `BBMD_Accept_FD_Registrations` (Trap 3), and serve `BACnet_IP_Mode` = `bbmd` |
+| Network Port | `Object_Name`, `Network_Type`, `Protocol_Level`, `Changes_Pending`, plus `IP_Address` / `IP_Subnet_Mask` / `IP_Default_Gateway` / `BACnet_IP_UDP_Port` | Nothing more for the BBMD: `SetBBMD` makes `BACnet_IP_Mode` read `bbmd` and enables the three BBMD properties, which the stack serves |
 
 ## Who serves what: the application or the stack?
 
@@ -178,9 +191,9 @@ the most moving parts:
 | `Units` | **you** | `GetPropertyEnumerated` |
 | `Event_State` | **stack**, sort of | no intrinsic alarming here, so nothing serves it - it reads `normal` only because `normal` is the enumeration's zero value and the stack substitutes a datatype default. Correct by coincidence, not design. |
 
-The Network Port additionally reports `BACnet_IP_Mode` = `bbmd` and, once you
-enable them (Trap 3 above), the three BBMD table properties - which the stack
-builds from the live BDT/FDT, not from a `GetProperty*` callback.
+The Network Port additionally reports `BACnet_IP_Mode` = `bbmd` and the three
+BBMD properties - all served by the stack once `SetBBMD` has run (the tables
+from the live BDT/FDT), not from a `GetProperty*` callback.
 
 Every object, not just this one, is in [docs/PICS.md](docs/PICS.md).
 
@@ -247,7 +260,8 @@ and not in `accepted`, comes out as a ⚠ row - that is a defect, not a feature.
 |---------|-------------|
 | The app prints red `Error:` lines but the device works | **Usually expected - the stack's own debug logging.** Common benign ones: (1) the device receives its **own** broadcast I-Am and logs a decode cascade (*"Services is not supported service=[0]"* ... *"Failed to process the incoming NPDU"*) - any BACnet/IP device that listens for broadcasts hears itself; (2) a one-time *"UUID has not been set. A UUID must be set for the BACnetSC device to start."* - the stack starts a BACnet/SC datalink these IP-only examples never configure; (3) `Error occurred while sending the encoded packet` when a `--bdt` peer is unreachable; (4) `foreign device table is full ... refusing new entry` - the FDT holds 128 entries and the registration was refused with NAK X'0030', as Annex J.5.2.2 requires. |
 | `Error: Broadcast Distribution Table is not configured with host device entry` / `Error: Failed to UpdateHostBDTIndex, aborting BBMD setup` | Trap 1 or Trap 2 above: a 4-octet (not 6-octet) BDT address, or `SetBBMD` called before the BDT (including the self-entry) is fully populated. |
-| `ReadProperty` of `BBMD_Broadcast_Distribution_Table` / `BBMD_Foreign_Device_Table` returns `unknown-property` | Trap 3 above: those properties need an explicit `SetPropertyEnabled` after `SetBBMD` - it does not enable them for you. |
+| `ReadProperty` of `BBMD_Broadcast_Distribution_Table` / `BBMD_Foreign_Device_Table` returns `unknown-property` | `SetBBMD` failed or was never called (it enables those properties), or the device was started with `--no-bbmd`. |
+| WriteProperty of `BBMD_Accept_FD_Registrations` is answered with Abort | No ReinitializeDevice callback is registered, so the written value could never be activated; register one (see `main.cpp`). |
 | CMake error: *"CAS BACnet Stack adapter not found under: ..."* | Submodules not initialized. Run `git submodule update --init --recursive` (or pass `-D CAS_STACK_DIR=...`). |
 | `CASBACnetStackDLL.h: No such file or directory` | Same - submodules not checked out. |
 | Windows: *"No CMAKE_CXX_COMPILER could be found"* | Install Visual Studio with the "Desktop development with C++" workload, then re-run from a fresh terminal. |

@@ -43,7 +43,7 @@
 // (BACnetStack_AddBDTEntry). From then on the stack does the Forwarded-NPDU work,
 // answers Read-Broadcast-Distribution-Table / Read-Foreign-Device-Table, and
 // maintains the FDT as foreign devices register and expire. The application's only
-// jobs are configuration (below) and reporting BACnet_IP_Mode = bbmd.
+// job is configuration (below).
 //
 // THE PEER BBMDs COME FROM THE COMMAND LINE: one --bdt <ip>[:<port>][/<mask>] per
 // peer (repeat it). Without any --bdt the device is a BBMD with no peers - it still
@@ -117,13 +117,6 @@ using namespace CASBACnetStackExampleConstants;
 // values every example needs. The value below is specific to this profile, so it
 // lives here - same style, citing the stack header that owns the full enumeration.
 // -----------------------------------------------------------------------------
-
-// -- BACnet/IP mode (BACnetIPMode enumeration, for the Network Port) ----------
-//    Full list: submodules/cas-bacnet-stack/source/BACnetIPMode.h
-//    normal (0) = a plain BACnet/IP device (what every other example reports)
-//    foreign (1) = a device registered with a remote BBMD
-//    bbmd (2)   = THIS device performs the BBMD function
-static const uint32_t BACNET_IP_MODE_BBMD = 2;
 
 // -- ReinitializeDevice 'Reinitialized State of Device' (cl. 16.4.1.1.1) -------
 //    The shared constants carry COLDSTART (0) and WARMSTART (1); a written BDT
@@ -557,20 +550,11 @@ bool GetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
         *value = ENGINEERING_UNITS_DEGREES_CELSIUS;
         return true;
     }
-    if (objectType == OBJECT_TYPE_NETWORK_PORT &&
-        objectInstance == NETWORK_PORT_INSTANCE &&
-        propertyIdentifier == PROPERTY_IDENTIFIER_BACNET_IP_MODE) {
-        // THIS is where a BBMD differs from every other example in the series.
-        // Every other example reports `normal` here; this device reports `bbmd`,
-        // which is how a client discovers that this Network Port performs the
-        // BBMD function and therefore has a readable BDT / FDT.
-        // At this Stack Pin (6.x @ e6de4ffd) the stack does not report it for
-        // you, so the application must. Later 6.x (#2548) makes SetBBMD set
-        // BACnet_IP_Mode itself; this branch becomes redundant once the pin moves
-        // past it. Started with --no-bbmd, the port is a plain one: `normal`.
-        *value = g_isBbmd ? BACNET_IP_MODE_BBMD : BACNET_IP_MODE_NORMAL;
-        return true;
-    }
+    // Network Port 1's BACnet_IP_Mode is NOT served here. It reads `bbmd` - how a
+    // client discovers that this port performs the BBMD function and so has a
+    // readable BDT / FDT - but the stack reports that itself once SetBBMD has
+    // made the port a BBMD (stack #2548), and `normal` when started with
+    // --no-bbmd. Serving it from this callback would only let the two disagree.
     return false;
 }
 
@@ -1063,10 +1047,18 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
 // refused. Like DeviceCommunicationControl, this example sets no password - a
 // real device guards ReinitializeDevice with one.
 //
-// AT THIS STACK PIN (6.x @ e6de4ffd) a BDT write does not wait for this: the
-// stack applies it as soon as it acknowledges the WriteProperty, and
-// BBMD_Accept_FD_Registrations is not writable at all. Later 6.x fixes the
-// second (#3321); see TODO.md. The Wire Tests report the first as a known gap.
+// The application does NOT call BACnetStack_ActivateNetworkPortPendingChanges
+// here: that export (stack #2866) is for the host to activate its OWN start-up
+// configuration, it runs the same pass this ReinitializeDevice is about to, and
+// its contract says not to call it from inside a stack callback.
+//
+// A written BBMD_Accept_FD_Registrations waits for this (stack #3321): write it
+// FALSE and registrations are still accepted until ACTIVATE_CHANGES. The stack
+// refuses that write (Abort) if no ReinitializeDevice callback is registered,
+// because nothing could ever activate it. AT THIS STACK PIN (6.x @ 64b2cfac5)
+// a BDT write does not wait: the stack applies it as soon as it acknowledges
+// the WriteProperty (stack #3930, TODO.md). The Wire Tests report that as a
+// known gap.
 // -----------------------------------------------------------------------------
 bool ReinitializeDevice(const uint32_t deviceInstance, const uint32_t reinitializedState,
                         const char* password, const uint32_t passwordLength, uint32_t* errorCode) {
@@ -1214,33 +1206,13 @@ static bool SetUpBbmd() {
         return false;
     }
 
-    // Enable the three BBMD table properties on the Network Port so a client can
-    // ReadProperty them. These are OPTIONAL on a Network Port (required only when
-    // BACnet_IP_Mode is bbmd), and at this Stack Pin (6.x @ e6de4ffd) SetBBMD
-    // does NOT enable them for you (later 6.x, #3317, does - these calls become
-    // redundant once the pin moves past it) - so
-    // without these calls, reading BBMD_Broadcast_Distribution_Table returns
-    // unknown-property even though the BBMD is fully functional. This is the exact
-    // "serving is not enough, you must enable" trap the Description property teaches
-    // above. The property IDs are not in the shared example constants, so name them
-    // here from the stack's BACnetPropertyIdentifier enum - keep these in sync with
-    // that enum (bbmdAcceptFdRegistrations/bbmdBroadcastDistributionTable/
-    // bbmdForeignDeviceTable); a stack renumber would not be caught at compile time.
-    // Note: reading BBMD_Accept_FD_Registrations always returns true here - the
-    // stack generates it as a constant at this Stack Pin, it does not reflect a
-    // configurable setting (cl. 12.56.39 wants it writable; later 6.x, #3321).
-    static const uint32_t PROP_BBMD_ACCEPT_FD_REGISTRATIONS = 413;
-    static const uint32_t PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE = 414;
-    static const uint32_t PROP_BBMD_FOREIGN_DEVICE_TABLE = 415;
-    if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_BROADCAST_DISTRIBUTION_TABLE, true) ||
-        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_FOREIGN_DEVICE_TABLE, true) ||
-        !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_NETWORK_PORT,
-                                        NETWORK_PORT_INSTANCE, PROP_BBMD_ACCEPT_FD_REGISTRATIONS, true)) {
-        printf("Error: Failed to enable the BBMD table properties on Network Port 1.\n");
-        return false;
-    }
+    // SetBBMD also does the two things a client needs to SEE that this port is a
+    // BBMD (stack #2548, #3317): BACnet_IP_Mode reads `bbmd`, and the three BBMD
+    // properties - BBMD_Broadcast_Distribution_Table, BBMD_Foreign_Device_Table
+    // and BBMD_Accept_FD_Registrations - are enabled, so ReadProperty and
+    // WriteProperty reach them. They are optional on a Network Port in general
+    // but required on a BBMD (Table 12-71.3, cl. 12.56.38-40); no
+    // SetPropertyEnabled call is needed for them.
 
     // Print the BDT the stack is actually holding, read back through the stack's
     // own getter rather than from the --bdt list - so what you see is what the BBMD

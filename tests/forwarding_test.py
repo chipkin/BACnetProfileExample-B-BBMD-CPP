@@ -21,8 +21,10 @@ with A) and F2 (registered with B). Then:
   6. K.6.6 minimums, on a third instance C: five peer BBMDs (Python sockets) each get the
      Forwarded-NPDU, and with five foreign devices registered, a broadcast from one
      reaches the other four.
-  7. KNOWN GAP: with the peers listed at the LAN address (same IP as B), B should still
-     retransmit to its foreign devices (J.4.5) - the stack drops it (TODO.md).
+  7. Two BBMDs on one IP subnet: with the peers listed at the LAN address (the same IP
+     as B), B still retransmits A's Forwarded-NPDU to its foreign devices (J.4.5: "the
+     BBMD merely retransmits the message directly to each foreign device currently in
+     the BBMD's FDT"). Stack #3651; 6.x @ e6de4ffd dropped it.
 
     python3 tests/forwarding_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
 """
@@ -114,7 +116,7 @@ def two_bbmds(args):
             local = forwarded_who_is(b_broadcasts, foreign_1.mac, 2)
             wiretest.known_gap(f"B re-broadcasts it on its own subnet ({broadcast_ip}:{port_b}, J.4.5)", local is not None,
                                "common/ 3.3.0 HelperSendMessage ignores the stack's broadcast flag when it is "
-                               "given an address, and sends B's re-broadcast to B's own unicast address")
+                               "given an address, and sends B's re-broadcast to B's own unicast address (stack #3933)")
         else:
             print("      (B's local re-broadcast is captured on Linux/macOS only: Windows refuses a second "
                   "socket on B's port)")
@@ -153,7 +155,7 @@ def k66_minimums(args):
 
 
 def same_ip_peers(args):
-    """The same topology with the peers listed at the shared LAN address (known stack gap)."""
+    """The same topology with the peers listed at the shared LAN address: two BBMDs on one IP subnet."""
     port_a, port_b = args.port + 3, args.port + 4
     probe = setup.start_bbmd(args, port_a, DEVICE_A, (), "bbmd-A-probe")
     lan_ip = probe.ip
@@ -163,15 +165,15 @@ def same_ip_peers(args):
     bbmd_b = setup.start_bbmd(args, port_b, DEVICE_B, [(lan_ip, port_a)], "bbmd-B-same-ip")
     foreign_1, foreign_2 = setup.foreign_device(bbmd_a), setup.foreign_device(bbmd_b)
     try:
-        setup.register(foreign_1, bbmd_a)
-        setup.register(foreign_2, bbmd_b)
+        codes = [setup.register(foreign_1, bbmd_a), setup.register(foreign_2, bbmd_b)]
+        wiretest.record("peers at the same IP: F1 and F2 register with A and B",
+                        codes == [wiretest.BVLC_RESULT_SUCCESSFUL_COMPLETION] * 2, f"results {codes}")
         time.sleep(0.5)
         crossed, = setup.broadcast(foreign_1, bbmd_a, [foreign_2], 3)
-        wiretest.known_gap("peers at the same IP: B still retransmits A's Forwarded-NPDU to its foreign device F2 "
-                           "(J.4.5 'merely retransmits the message directly to each foreign device')",
-                           crossed is not None,
-                           "stack 6.x @ e6de4ffd skips ALL Forwarded-NPDU distribution from a same-subnet "
-                           "source, including the foreign-device retransmission (BACnetBBMD.cpp loop guard)")
+        wiretest.record("... B still retransmits A's Forwarded-NPDU to its foreign device F2 "
+                        "(J.4.5 'merely retransmits the message directly to each foreign device')",
+                        crossed is not None and crossed.source[1] == bbmd_b.port,
+                        crossed.describe() if crossed else "F2 received nothing")
     finally:
         foreign_1.close()
         foreign_2.close()

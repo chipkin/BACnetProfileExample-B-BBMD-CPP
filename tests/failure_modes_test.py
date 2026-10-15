@@ -18,9 +18,15 @@ Device Table is full, when a stranger asks it to forward, and when it is not a B
   4. Reconfigured as a non-BBMD (--no-bbmd; Annex L.7.3): BACnet_IP_Mode reads normal,
      and every BBMD message gets the NAK Annex J requires of a device that is not a BBMD
      (J.4.4.1 X'0020', J.5.2.1.1 X'0040', J.5.2.1.2 X'0050', J.5.2.2 X'0030').
+  5. Configured not to accept foreign devices (J.5.2.2: "A BBMD ... that is not configured
+     to accept foreign device registrations shall return a BVLC-Result message containing
+     a result code of X'0030'"). BBMD_Accept_FD_Registrations is written FALSE; cl. 12.56.39
+     makes that a pending change, so registrations are still accepted until
+     ReinitializeDevice ACTIVATE_CHANGES, and NAKed X'0030' after it. Written TRUE and
+     activated again, a registration is accepted - the route back.
 
 Check 1 waits out the grace period, so this script takes a little over a minute; checks
-2-4 run while it waits.
+2-5 run while it waits.
 
     python3 tests/failure_modes_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
 """
@@ -33,6 +39,7 @@ from bbmd_setup import wiretest
 DEVICE_EXPIRY = 389025
 DEVICE_FULL = 389026
 DEVICE_PLAIN = 389027
+DEVICE_REFUSING = 389028
 SHORT_TIME_TO_LIVE = 30      # K.6.6: "lifetimes in the range 30 seconds - 9 hours"
 GRACE_PERIOD = 30            # J.5.2.3
 FDT_CAPACITY = 128           # STACK_OPTION_MAX_FOREIGN_DEVICE_TABLE_ENTRIES (full target)
@@ -102,6 +109,64 @@ def not_a_bbmd(args):
         bbmd.stop()
 
 
+def boolean_property(client, bbmd, property_identifier):
+    """A BOOLEAN property of Network Port 1 as True/False, or None if it did not read as one."""
+    value, _ = setup.read_property(client, bbmd, property_identifier)
+    decoded = wiretest.application_values(value) if value is not None else None
+    if decoded in ([(1, b"\x00")], [(1, b"\x01")]):
+        return decoded == [(1, b"\x01")]
+    return None
+
+
+def set_accept_fd_registrations(client, bbmd, accept):
+    """WriteProperty BBMD_Accept_FD_Registrations; True if it got a SimpleACK."""
+    answer = setup.write_property(client, bbmd, setup.PROPERTY_BBMD_ACCEPT_FD_REGISTRATIONS,
+                                  wiretest.application_boolean(accept))
+    return answer is not None and answer.pdu_type == wiretest.PDU_SIMPLE_ACK, answer
+
+
+def activate_changes(client, bbmd):
+    answer = setup.reinitialize_device(client, bbmd, wiretest.REINITIALIZE_ACTIVATE_CHANGES)
+    return answer is not None and answer.pdu_type == wiretest.PDU_SIMPLE_ACK
+
+
+def registrations_refused(args):
+    bbmd = setup.start_bbmd(args, args.port + 23, DEVICE_REFUSING, (), "bbmd-refusing")
+    client = setup.foreign_device(bbmd)
+    before = setup.foreign_device(bbmd)
+    after = setup.foreign_device(bbmd)
+    again = setup.foreign_device(bbmd)
+    try:
+        accepting = boolean_property(client, bbmd, setup.PROPERTY_BBMD_ACCEPT_FD_REGISTRATIONS)
+        wiretest.record("BBMD_Accept_FD_Registrations reads TRUE at start-up", accepting is True, f"{accepting}")
+
+        written, answer = set_accept_fd_registrations(client, bbmd, False)
+        wiretest.record("WriteProperty BBMD_Accept_FD_Registrations FALSE gets a SimpleACK", written, setup.show(answer))
+        pending = boolean_property(client, bbmd, setup.PROPERTY_CHANGES_PENDING)
+        wiretest.record("... Changes_Pending reads TRUE (cl. 12.56.39)", pending is True, f"{pending}")
+        code = setup.register(before, bbmd)
+        wiretest.record("... and until ReinitializeDevice a registration is still accepted",
+                        code == wiretest.BVLC_RESULT_SUCCESSFUL_COMPLETION, f"result {code}")
+
+        wiretest.record("ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK", activate_changes(client, bbmd))
+        pending = boolean_property(client, bbmd, setup.PROPERTY_CHANGES_PENDING)
+        wiretest.record("... Changes_Pending reads FALSE", pending is False, f"{pending}")
+        code = setup.register(after, bbmd)
+        wiretest.record("... and a registration is refused: Register-Foreign-Device NAK X'0030' (J.5.2.2)",
+                        code == wiretest.BVLC_RESULT_REGISTER_FOREIGN_DEVICE_NAK, f"result {code}")
+
+        written, answer = set_accept_fd_registrations(client, bbmd, True)
+        activated = activate_changes(client, bbmd)
+        code = setup.register(again, bbmd)
+        wiretest.record("written TRUE and activated again, a registration is accepted",
+                        written and activated and code == wiretest.BVLC_RESULT_SUCCESSFUL_COMPLETION,
+                        f"write {setup.show(answer)}, reinitialize {activated}, result {code}")
+    finally:
+        for endpoint in (client, before, after, again):
+            endpoint.close()
+        bbmd.stop()
+
+
 def main():
     args = setup.parser(__doc__).parse_args()
 
@@ -120,6 +185,7 @@ def main():
                         codes == [wiretest.BVLC_RESULT_SUCCESSFUL_COMPLETION] * 2, f"results {codes}")
 
         not_a_bbmd(args)
+        registrations_refused(args)
 
         # Past its TTL, inside the grace period: still there. (The FDT-full check, which
         # can take a while, runs only after this, so this one happens on time.)

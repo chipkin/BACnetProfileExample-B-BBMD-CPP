@@ -84,7 +84,7 @@ by WriteProperty of the Network Port's `BBMD_Broadcast_Distribution_Table`
 that property writable (cl. 12.56.38). Cl. 12.56.38 makes a written value
 effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART; at this Stack
 Pin the stack applies it as soon as it acknowledges the write and leaves
-`Changes_Pending` FALSE (a known deviation, `TODO.md`). A list without this
+`Changes_Pending` FALSE (a known deviation, stack #3930, `TODO.md`). A list without this
 device's own entry is refused (`value-out-of-range`). At start-up the BDT comes from `--bdt`. Started with
 `--no-bbmd`, the device answers every BBMD message above with the NAK Annex J
 requires of a non-BBMD (`X'0030'`, `X'0020'`, `X'0040'`, `X'0050'`).
@@ -102,8 +102,8 @@ Segmentation is **not supported** in either direction
 
 No object is dynamically creatable or deletable. The three output objects are
 commandable (a 16-slot `Priority_Array` resolves `Present_Value`). The only
-other writable property is the Network Port's `BBMD_Broadcast_Distribution_Table`
-(section 9).
+other writable properties are the Network Port's `BBMD_Broadcast_Distribution_Table`
+and `BBMD_Accept_FD_Registrations` (section 9).
 
 | Object type | Instance | Object_Name | Optional properties supported |
 |---|:---:|---|---|
@@ -146,17 +146,19 @@ BBMDs and at least five foreign devices (K.6.6; the stack's tables hold 512 and
 128 entries), and any foreign-device lifetime the 16-bit Time-to-Live can carry,
 which covers K.6.6's 30 s - 9 h (each entry is purged Time-to-Live + 30 s after
 its last registration, J.5.2.3; the Wire Tests exercise 30 s and 300 s).
-`BBMD_Accept_FD_Registrations` always reads TRUE at this Stack Pin: the stack
-generates it as a constant (see `TODO.md`). It forwards a local broadcast to every
+`BBMD_Accept_FD_Registrations` reads TRUE at start-up and is writable: a
+written FALSE becomes effective on ReinitializeDevice ACTIVATE_CHANGES or
+WARMSTART (cl. 12.56.39), after which every Register-Foreign-Device is refused
+with NAK `X'0030'` (J.5.2.2). It forwards a local broadcast to every
 BDT peer as a unicast `Forwarded-NPDU`, and re-broadcasts what it receives from
 a peer onto its own subnet - both handled entirely by the stack. It also
 accepts Foreign Device registrations into its Foreign Device Table. The device
 is not a router and does not perform network-layer routing.
 
 The `BBMD_Broadcast_Distribution_Table`, `BBMD_Foreign_Device_Table`, and
-`BBMD_Accept_FD_Registrations` properties on the Network Port are enabled
-explicitly (`BACnetStack_SetPropertyEnabled`, right after `SetBBMD`) so a
-client can read them; `SetBBMD` does not enable them on its own.
+`BBMD_Accept_FD_Registrations` properties on the Network Port are enabled by
+`SetBBMD`, which also makes `BACnet_IP_Mode` read `bbmd`; the application does
+neither itself.
 
 ## 10. Character sets supported
 
@@ -188,7 +190,7 @@ Every object this example creates, and every REQUIRED property of each (per ANSI
 | Protocol_Object_Types_Supported | BACnetObjectTypesSupported | stack | no |
 | Object_List | BACnetARRAY[N] of BACnetObjectIdentifier | stack | no |
 | Max_APDU_Length_Accepted | Unsigned | stack default, accepted (`CAS_BACNET_DEVICE_DEFAULT_MAX_APDU_LENGTH_ACCEPTED`) | no |
-| Segmentation_Supported | BACnetSegmentation | stack default, accepted (`BACnetSegmentation::noSegmentation`) | no |
+| Segmentation_Supported | BACnetSegmentation | stack default, accepted (`BACnetSegmentation::segmentedBoth` with `STACK_OPTION_SEGME) | no |
 | APDU_Timeout | Unsigned | stack default, accepted (`CAS_BACNET_DEVICE_DEFAULT_APDU_TIMEOUT`) | no |
 | Number_Of_APDU_Retries | Unsigned | stack default, accepted (`CAS_BACNET_DEVICE_DEFAULT_NUMBER_OF_APDU_RETRIES`) | no |
 | Device_Address_Binding | BACnetLIST of BACnetAddressBinding | stack | no |
@@ -289,7 +291,7 @@ Every object this example creates, and every REQUIRED property of each (per ANSI
 | Property_List | BACnetARRAY[N] of BACnetPropertyIdentifier | stack | no |
 | Current_Command_Priority | BACnetOptionalUnsigned | stack | no |
 
-### Network Port 1 "Vermilion" - BACnet/IP, and this Network Port is the BBMD: BACnetStack_SetBBMD makes it one and it reports BACnet_IP_Mode=bbmd instead of normal (normal when started with --no-bbmd); the BBMD_Broadcast_Distribution_Table/BBMD_Foreign_Device_Table/BBMD_Accept_FD_Registrations properties are enabled explicitly (not in this table - they are IPv4-BBMD-conditional properties outside property-profile-reference.md's base Network Port set) and are stack-computed from the live BDT/FDT, not app-served. BBMD_Broadcast_Distribution_Table is writable (the stack makes it so, cl. 12.56.38; a write must keep this device's own entry, and at this Stack Pin takes effect when acknowledged instead of on ReinitializeDevice ACTIVATE_CHANGES/WARMSTART as cl. 12.56.38 requires - see TODO.md); BBMD_Accept_FD_Registrations always reads TRUE at this Stack Pin. Network_Type and Protocol_Level are set from BACnetStack_AddNetworkPortObject()'s arguments (IPv4, BACnet Application) at start-up, not a GetProperty callback like the object's other app-served rows; Changes_Pending is likewise computed and answered natively by the stack's Network Port object. Reliability has no fault condition this example detects, so it is accepted at the generic default (normal)
+### Network Port 1 "Vermilion" - BACnet/IP, and this Network Port is the BBMD: BACnetStack_SetBBMD makes it one and it reports BACnet_IP_Mode=bbmd instead of normal (normal when started with --no-bbmd); SetBBMD also enables the BBMD_Broadcast_Distribution_Table/BBMD_Foreign_Device_Table/BBMD_Accept_FD_Registrations properties (not in this table - they are IPv4-BBMD-conditional properties outside property-profile-reference.md's base Network Port set), which are stack-computed from the live BDT/FDT, not app-served. BBMD_Broadcast_Distribution_Table is writable (cl. 12.56.38; a write must keep this device's own entry, and at this Stack Pin takes effect when acknowledged instead of on ReinitializeDevice ACTIVATE_CHANGES/WARMSTART as cl. 12.56.38 requires - stack #3930, TODO.md); BBMD_Accept_FD_Registrations is writable as a pending change that ReinitializeDevice ACTIVATE_CHANGES/WARMSTART makes effective (cl. 12.56.39). Network_Type and Protocol_Level are set from BACnetStack_AddNetworkPortObject()'s arguments (IPv4, BACnet Application) at start-up, not a GetProperty callback like the object's other app-served rows; Changes_Pending is likewise computed and answered natively by the stack's Network Port object. Reliability has no fault condition this example detects, so it is accepted at the generic default (normal)
 
 | Property | Datatype | Served by | Writable |
 |---|---|---|:---:|

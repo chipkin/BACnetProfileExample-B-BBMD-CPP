@@ -34,7 +34,7 @@ This repository is self-contained:
   it - that belongs in `tests/`. Change it generically, bump its version, and
   re-copy it to every example that vendors it.
 - `TODO.md` - known gaps outside this example (stack, `common/`) that the Wire
-  Tests report as `[KNOWN GAP]`, and what to change when the Stack Pin moves.
+  Tests report as `[KNOWN GAP]`.
 - `submodules/cas-bacnet-stack/` - the **CAS BACnet Stack** as a git submodule
   (private; compiled from source). After cloning, run
   `git submodule update --init --recursive`.
@@ -82,8 +82,9 @@ Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1
   same in every example that has it). If you change them here, they must change in
   every example that shares them — prefer not to.
 - **The BBMD function is the stack's job.** Do not write forwarding logic. The
-  application only configures the tables (`--bdt`, in `SetUpBbmd()`) and reports
-  `BACnet_IP_Mode` = `bbmd` (`normal` with `--no-bbmd`).
+  application only configures the tables (`--bdt`, in `SetUpBbmd()`) and hands
+  the port over with `SetBBMD`, which also makes `BACnet_IP_Mode` read `bbmd`
+  (`normal` with `--no-bbmd`) and enables the BBMD properties.
 - **This device's own BDT entry is two-hop (255.255.255.255).** The stack reads
   its own entry's mask to decide whether to re-broadcast a peer's Forwarded-NPDU
   locally (Annex J.4.5). Do not change it back to the subnet mask.
