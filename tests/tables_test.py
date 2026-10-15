@@ -46,7 +46,7 @@ def main():
     peer_2_entry = (f"{setup.LOOPBACK}:{peer_2.port}", setup.TWO_HOP_MASK)
     try:
         # 1. BACnet_IP_Mode.
-        value, answer = setup.read_property(client, bbmd, 1, setup.PROPERTY_BACNET_IP_MODE)
+        value, answer = setup.read_property(client, bbmd, setup.PROPERTY_BACNET_IP_MODE)
         mode = wiretest.application_values(value) if value is not None else None
         wiretest.record("Network Port 1 BACnet_IP_Mode reads bbmd (2)",
                         mode == [(9, bytes([setup.BACNET_IP_MODE_BBMD]))],
@@ -58,7 +58,7 @@ def main():
                         table == [own_entry, peer_1_entry], setup.show(table))
 
         # 3. The same table as a property.
-        value, answer = setup.read_property(client, bbmd, 2, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE)
+        value, answer = setup.read_property(client, bbmd, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE)
         property_table = setup.parse_bdt_property(value) if value is not None else None
         wiretest.record("ReadProperty BBMD_Broadcast_Distribution_Table carries the same entries",
                         property_table == [own_entry, peer_1_entry],
@@ -103,20 +103,20 @@ def main():
                         at_peer_1 is not None)
         wiretest.record("... but not the second", at_peer_2 is None, at_peer_2.describe() if at_peer_2 else "")
 
-        answer = setup.write_property(client, bbmd, 3, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE,
+        answer = setup.write_property(client, bbmd, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE,
                                       setup.bdt_entry(bbmd.ip, bbmd.port) + setup.bdt_entry(setup.LOOPBACK, peer_1.port) +
                                       setup.bdt_entry(setup.LOOPBACK, peer_2.port))
         wiretest.record("WriteProperty BBMD_Broadcast_Distribution_Table (adding a second peer) gets a SimpleACK",
                         answer is not None and answer.pdu_type == wiretest.PDU_SIMPLE_ACK,
                         answer.describe() if answer else "no answer")
-        value, answer = setup.read_property(client, bbmd, 5, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE)
+        value, answer = setup.read_property(client, bbmd, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE)
         written = setup.parse_bdt_property(value) if value is not None else None
         wiretest.record("... and reads back as written (cl. 12.56.38 (b)/(c))",
                         written == [own_entry, peer_1_entry, peer_2_entry],
                         f"{written}" if value is not None else (answer.describe() if answer else "no answer"))
 
         # Cl. 12.56.38: pending until ReinitializeDevice. The first peer is the control.
-        value, _ = setup.read_property(client, bbmd, 6, setup.PROPERTY_CHANGES_PENDING)
+        value, _ = setup.read_property(client, bbmd, setup.PROPERTY_CHANGES_PENDING)
         changes_pending = wiretest.application_values(value) if value is not None else None
         at_peer_1, at_peer_2 = setup.broadcast(client, bbmd, [peer_1, peer_2])
         wiretest.record("before ReinitializeDevice, a broadcast still reaches the first peer (control)",
@@ -127,8 +127,7 @@ def main():
                            f"stack 6.x @ e6de4ffd applies a BDT write at once (second peer served: "
                            f"{at_peer_2 is not None}; Changes_Pending {changes_pending})")
 
-        answer = setup.exchange(client, bbmd, wiretest.bvlc(wiretest.npdu(wiretest.reinitialize_device_request(
-            7, wiretest.REINITIALIZE_ACTIVATE_CHANGES), expecting_reply=True)), lambda frame: frame.invoke_id == 7)
+        answer = setup.reinitialize_device(client, bbmd, wiretest.REINITIALIZE_ACTIVATE_CHANGES)
         wiretest.record("ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK",
                         answer is not None and answer.pdu_type == wiretest.PDU_SIMPLE_ACK,
                         answer.describe() if answer else "no answer")
@@ -139,7 +138,7 @@ def main():
                         after.describe() if after else "the second peer received nothing")
 
         # 8. A replacement without this BBMD's own entry is refused.
-        answer = setup.write_property(client, bbmd, 4, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE,
+        answer = setup.write_property(client, bbmd, setup.PROPERTY_BBMD_BROADCAST_DISTRIBUTION_TABLE,
                                       setup.bdt_entry(setup.LOOPBACK, peer_1.port))
         wiretest.record("a BDT write that drops this BBMD's own entry is refused (Error)",
                         answer is not None and answer.pdu_type == wiretest.PDU_ERROR,

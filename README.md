@@ -19,7 +19,7 @@ capability the profile exists for - forwards broadcasts between subnets as a
 
 > **Versions:** this document describes **example v1.2.0**, built and verified
 > against **CAS BACnet Stack 6.0.23** (`6.x` @ `e6de4ffd`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.0.0**.
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -214,7 +214,7 @@ Expected output:
 ```
 BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.0.0
+Common helper (common/) version: 3.3.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 FYI: this device is a BBMD. Broadcast Distribution Table:
       [0] 192.168.3.64:47808  mask 255.255.255.255   <- this device

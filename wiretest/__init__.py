@@ -7,6 +7,7 @@ example's Profile Function is removed. This package is the part every example sh
 
     codec     - BVLL (incl. BBMD and foreign-device messages) / NPDU / APDU encode and decode
     endpoint  - UDP sockets that send frames and collect replies; broadcast capture
+    client    - Client: ReadProperty / WriteProperty with invoke ids, optionally through a router
     process   - start / stop an example binary, read its console
     peer      - SimulatedDevice, a Python BACnet/IP device to use as a Peer
     results   - record() / known_gap() / summary() bookkeeping
@@ -19,9 +20,10 @@ one example, bump the version, then copy it to every example that vendors it.
 Python 3 standard library only.
 """
 
-WIRETEST_VERSION = "0.2.0"
+WIRETEST_VERSION = "0.5.0"
 
-from . import codec, endpoint, peer, process, results  # noqa: E402,F401
+from . import client, codec, endpoint, peer, process, results  # noqa: E402,F401
+from .client import Answer, Client  # noqa: E402,F401
 from .codec import *  # noqa: E402,F401,F403
 from .endpoint import Endpoint, broadcast_listener  # noqa: E402,F401
 from .peer import SimulatedDevice  # noqa: E402,F401

@@ -8,7 +8,7 @@ a foreign device registered with one BBMD reaches a foreign device registered wi
 another, and the second BBMD's I-Am comes back.
 
 Verified 2026-10-14 against the pinned stack, `6.x` @ `e6de4ffd` (6.0.23), with
-`common/` 3.0.0.
+`common/` 3.3.0.
 
 ## Stack: a Forwarded-NPDU from a same-subnet peer is not passed to foreign devices
 
@@ -51,8 +51,8 @@ it answers the WriteProperty, and `Changes_Pending` stays FALSE.
 ## `common/`: the stack's `broadcast` flag is ignored when it comes with an address
 
 For a two-hop BBMD's local re-broadcast (J.4.5) the stack calls the send callback with
-its **own** B/IP address and `broadcast = true`. `HelperSendMessage` (`common/` 3.0.0,
-and 3.2.0 as vendored in B-RTR) sends to the address it is given whenever there are 6
+its **own** B/IP address and `broadcast = true`. `HelperSendMessage` (`common/` 3.0.0 up to
+and including 3.3.0, vendored here) sends to the address it is given whenever there are 6
 octets, so the re-broadcast goes to this BBMD's own unicast address
 (`TX 14 bytes to 172.17.136.75:47901 (broadcast)`) and the devices on its subnet never see
 it.

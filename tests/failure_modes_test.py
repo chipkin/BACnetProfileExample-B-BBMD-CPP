@@ -78,8 +78,8 @@ def not_a_bbmd(args):
     try:
         # A plain device prints no BDT, so reach it on loopback.
         bbmd.ip = setup.LOOPBACK
-        client = wiretest.Endpoint(bind_ip=setup.LOOPBACK)
-        value, answer = setup.read_property(client, bbmd, 1, setup.PROPERTY_BACNET_IP_MODE)
+        client = setup.client_on(setup.LOOPBACK)
+        value, answer = setup.read_property(client, bbmd, setup.PROPERTY_BACNET_IP_MODE)
         mode = wiretest.application_values(value) if value is not None else None
         wiretest.record("--no-bbmd: Network Port 1 BACnet_IP_Mode reads normal (0)",
                         mode == [(9, bytes([setup.BACNET_IP_MODE_NORMAL]))],

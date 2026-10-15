@@ -104,8 +104,14 @@ def outbound_ipv4():
 
 
 def foreign_device(bbmd):
-    """A Python foreign device: a UDP socket on the host's LAN address, ephemeral port."""
-    return wiretest.Endpoint(bind_ip=bbmd.ip)
+    """A Python foreign device: a UDP socket on the host's LAN address, ephemeral port. It is a
+    wiretest.Client, so it can also send confirmed requests (ReadProperty, WriteProperty,
+    ReinitializeDevice), retried with the same invoke id while unanswered."""
+    return client_on(bbmd.ip)
+
+
+def client_on(ip):
+    return wiretest.Client(bind_ip=ip, retries=ATTEMPTS - 1)
 
 
 # UDP is lossy, and on Windows the example's own socket misses a fifth or more of what it
@@ -187,12 +193,7 @@ def is_forwarded_who_is(frame, originating_mac):
 
 def i_am_instance(frame):
     """The device instance an I-Am announces, else None."""
-    if frame.pdu_type != wiretest.PDU_UNCONFIRMED_REQUEST or frame.service != wiretest.SERVICE_I_AM:
-        return None
-    values = wiretest.application_values(frame.payload[2:])
-    if not values or values[0][0] != 12:  # application tag 12 = BACnetObjectIdentifier
-        return None
-    return int.from_bytes(values[0][1], "big") & wiretest.MAX_INSTANCE
+    return wiretest.i_am_device_instance(frame.payload) if frame.has_npdu else None
 
 
 def bdt_entry(ip, port, mask=TWO_HOP_MASK):
@@ -226,21 +227,23 @@ def parse_bdt_property(value):
     return entries
 
 
-def read_property(client, bbmd, invoke_id, property_identifier):
-    """ReadProperty of Network Port 1; returns (value octets or None, the answer frame or None)."""
-    answer = exchange(client, bbmd, wiretest.bvlc(wiretest.npdu(wiretest.read_property_request(
-        invoke_id, wiretest.OBJECT_TYPE_NETWORK_PORT, NETWORK_PORT_INSTANCE, property_identifier),
-        expecting_reply=True)), lambda frame: frame.invoke_id == invoke_id)
-    if answer is None or answer.pdu_type != wiretest.PDU_COMPLEX_ACK:
-        return None, answer
-    return wiretest.read_property_value(answer.payload), answer
+def read_property(client, bbmd, property_identifier):
+    """ReadProperty of Network Port 1 (a wiretest.Client); returns (value octets or None, the answer frame or None)."""
+    answer = client.read_property(bbmd.port, wiretest.OBJECT_TYPE_NETWORK_PORT, NETWORK_PORT_INSTANCE,
+                                  property_identifier, ip=bbmd.ip, timeout=1)
+    return answer.value_octets, answer.frame
 
 
-def write_property(client, bbmd, invoke_id, property_identifier, value_octets):
-    """WriteProperty of Network Port 1; returns the answer frame or None."""
-    return exchange(client, bbmd, wiretest.bvlc(wiretest.npdu(wiretest.write_property_request(
-        invoke_id, wiretest.OBJECT_TYPE_NETWORK_PORT, NETWORK_PORT_INSTANCE, property_identifier, value_octets),
-        expecting_reply=True)), lambda frame: frame.invoke_id == invoke_id)
+def write_property(client, bbmd, property_identifier, value_octets):
+    """WriteProperty of Network Port 1 (a wiretest.Client); returns the answer frame or None."""
+    return client.write_property(bbmd.port, wiretest.OBJECT_TYPE_NETWORK_PORT, NETWORK_PORT_INSTANCE,
+                                 property_identifier, value_octets, ip=bbmd.ip, timeout=1).frame
+
+
+def reinitialize_device(client, bbmd, state):
+    """ReinitializeDevice (cl. 16.4) with no password; returns the answer frame or None."""
+    return client.request(lambda invoke_id: wiretest.reinitialize_device_request(invoke_id, state),
+                          bbmd.port, ip=bbmd.ip, timeout=1).frame
 
 
 def show(answer):

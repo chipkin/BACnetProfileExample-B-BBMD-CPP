@@ -16,7 +16,7 @@ with A) and F2 (registered with B). Then:
      (B -> A -> F1): discovery works across the two BBMDs in both directions.
   4. F1 does not get its own broadcast back (J.4.5: "except the originating node").
   5. KNOWN GAP (Linux/macOS, where the broadcast can be captured): B re-broadcasts the
-     Forwarded-NPDU on its own subnet (J.4.5, two-hop) - common/ 3.0.0 sends it to B
+     Forwarded-NPDU on its own subnet (J.4.5, two-hop) - common/ 3.3.0 sends it to B
      itself instead (TODO.md).
   6. K.6.6 minimums, on a third instance C: five peer BBMDs (Python sockets) each get the
      Forwarded-NPDU, and with five foreign devices registered, a broadcast from one
@@ -108,12 +108,12 @@ def two_bbmds(args):
                         f"{len(echoed)} copies" if echoed else "")
 
         # 5. B's local re-broadcast (two-hop). The stack hands it to common/ addressed to B's
-        #    own B/IP address with broadcast=true; common/ 3.0.0 ignores the flag and
+        #    own B/IP address with broadcast=true; common/ 3.3.0 ignores the flag and
         #    unicasts it to B itself, so nothing reaches the subnet broadcast address.
         if b_broadcasts:
             local = forwarded_who_is(b_broadcasts, foreign_1.mac, 2)
             wiretest.known_gap(f"B re-broadcasts it on its own subnet ({broadcast_ip}:{port_b}, J.4.5)", local is not None,
-                               "common/ 3.0.0 HelperSendMessage ignores the stack's broadcast flag when it is "
+                               "common/ 3.3.0 HelperSendMessage ignores the stack's broadcast flag when it is "
                                "given an address, and sends B's re-broadcast to B's own unicast address")
         else:
             print("      (B's local re-broadcast is captured on Linux/macOS only: Windows refuses a second "

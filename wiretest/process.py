@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: CC0-1.0
 # Public-domain example code (CC0) - see ../LICENSE.
 """Start and stop an example binary, and read what its console says."""
+import os
 import re
 import subprocess
 import sys
@@ -16,11 +17,16 @@ TX_BROADCAST = re.compile(r"TX \d+ bytes to (\d+\.\d+\.\d+\.\d+):(\d+) \(broadca
 class Program:
     """A running example: console captured to a file, stdin a pipe (the examples quit on 'q')."""
 
-    def __init__(self, exe, arguments, label):
+    def __init__(self, exe, arguments, label, environment=None):
+        """`environment`: extra environment variables for the example (added to this process's
+        own), e.g. a test-only switch that the example reads and its command line never offers."""
         self.label = label
         self.log = tempfile.NamedTemporaryFile(prefix=f"{label}-", suffix=".log", delete=False)
-        self.process = subprocess.Popen([str(exe)] + [str(argument) for argument in arguments],
-                                        stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT)
+        variables = dict(os.environ, **{name: str(value) for name, value in (environment or {}).items()})
+        # Absolute: Windows' CreateProcess does not resolve a relative path written with "/".
+        self.process = subprocess.Popen([str(Path(exe).resolve())] + [str(argument) for argument in arguments],
+                                        stdin=subprocess.PIPE, stdout=self.log, stderr=subprocess.STDOUT,
+                                        env=variables)
 
     def wait_for_output(self, text, seconds=20):
         deadline = time.monotonic() + seconds
@@ -40,6 +46,13 @@ class Program:
         with open(self.log.name, "r", errors="replace") as handle:
             return handle.read()
 
+    def press(self, keys):
+        """Type `keys` on the example's keyboard (its stdin pipe). The examples read keys
+        with common/'s PollKey(), which sees a pipe on Linux/macOS but not on Windows
+        (_kbhit() only reads a console), so this drives an example on POSIX only."""
+        self.process.stdin.write(keys.encode("ascii"))
+        self.process.stdin.flush()
+
     def stop(self):
         if self.process.poll() is None:
             try:
@@ -54,9 +67,9 @@ class Program:
         print(f"      ({self.label} console: {self.log.name})")
 
 
-def start(exe, arguments, label):
+def start(exe, arguments, label, environment=None):
     """Start an example and wait for its 'ready' line; exits the test if it never comes."""
-    program = Program(exe, arguments, label)
+    program = Program(exe, arguments, label, environment)
     if not program.wait_ready():
         print(program.output())
         program.stop()

@@ -74,28 +74,63 @@ SERVICE_I_AM = 0
 SERVICE_WHO_IS = 8
 
 OBJECT_TYPE_ANALOG_INPUT = 0
+OBJECT_TYPE_ANALOG_OUTPUT = 1
 OBJECT_TYPE_BINARY_INPUT = 3
+OBJECT_TYPE_BINARY_OUTPUT = 4
 OBJECT_TYPE_DEVICE = 8
 OBJECT_TYPE_GROUP = 11
 OBJECT_TYPE_MULTI_STATE_INPUT = 13
 OBJECT_TYPE_NETWORK_PORT = 56
 
+PROPERTY_DESCRIPTION = 28
 PROPERTY_LIST_OF_GROUP_MEMBERS = 53
 PROPERTY_OBJECT_IDENTIFIER = 75
+PROPERTY_OBJECT_LIST = 76
 PROPERTY_OBJECT_NAME = 77
+PROPERTY_OUT_OF_SERVICE = 81
 PROPERTY_PRESENT_VALUE = 85
+PROPERTY_PRIORITY_ARRAY = 87
+PROPERTY_RELIABILITY = 103
+PROPERTY_RELINQUISH_DEFAULT = 104
+PROPERTY_STATUS_FLAGS = 111
+PROPERTY_PROPERTY_LIST = 371
 PROPERTY_NETWORK_NUMBER = 425
 PROPERTY_NETWORK_NUMBER_QUALITY = 426
+PROPERTY_CURRENT_COMMAND_PRIORITY = 431
 
 ERROR_CLASS_OBJECT = 1
 ERROR_CLASS_PROPERTY = 2
 ERROR_CLASS_SERVICES = 5
 ERROR_CODE_UNKNOWN_OBJECT = 31
 ERROR_CODE_UNKNOWN_PROPERTY = 32
+ERROR_CODE_VALUE_OUT_OF_RANGE = 37
 ERROR_CODE_WRITE_ACCESS_DENIED = 40
 ERROR_CODE_LIST_ELEMENT_NOT_FOUND = 81
 
 MAX_INSTANCE = 0x3FFFFF
+
+# BACnetReliability (cl. 21) - the two values a gateway reports most.
+RELIABILITY_NO_FAULT_DETECTED = 0
+RELIABILITY_COMMUNICATION_FAILURE = 12
+
+# BACnetStatusFlags bit positions (cl. 21): bit 0 is the first bit of the BIT STRING.
+STATUS_FLAG_IN_ALARM = 0
+STATUS_FLAG_FAULT = 1
+STATUS_FLAG_OVERRIDDEN = 2
+STATUS_FLAG_OUT_OF_SERVICE = 3
+
+# Application tag numbers (cl. 20.2.1.4).
+TAG_NULL = 0
+TAG_BOOLEAN = 1
+TAG_UNSIGNED = 2
+TAG_SIGNED = 3
+TAG_REAL = 4
+TAG_DOUBLE = 5
+TAG_OCTET_STRING = 6
+TAG_CHARACTER_STRING = 7
+TAG_BIT_STRING = 8
+TAG_ENUMERATED = 9
+TAG_OBJECT_IDENTIFIER = 12
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +263,18 @@ def application_enumerated(value):
     return bytes([0x90 | len(body)]) + body
 
 
+def application_null():
+    return bytes([0x00])
+
+
+def application_boolean(value):
+    return bytes([0x11 if value else 0x10])   # application BOOLEAN: the value is in the length field
+
+
+def application_real(value):
+    return bytes([0x44]) + struct.pack(">f", value)
+
+
 def application_object_id(object_type, instance):
     return bytes([0xC4]) + object_id(object_type, instance)
 
@@ -244,16 +291,21 @@ def confirmed_request(invoke_id, service, parameters):
     return bytes([0x00, 0x05, invoke_id, service]) + parameters
 
 
-def read_property_request(invoke_id, object_type, instance, property_identifier):
-    return confirmed_request(invoke_id, SERVICE_READ_PROPERTY,
-                             context_object_id(0, object_type, instance) +
-                             context_unsigned(1, property_identifier))
+def read_property_request(invoke_id, object_type, instance, property_identifier, array_index=None):
+    parameters = context_object_id(0, object_type, instance) + context_unsigned(1, property_identifier)
+    if array_index is not None:
+        parameters += context_unsigned(2, array_index)
+    return confirmed_request(invoke_id, SERVICE_READ_PROPERTY, parameters)
 
 
-def write_property_request(invoke_id, object_type, instance, property_identifier, value_octets, priority=None):
-    """WriteProperty (cl. 15.9); `value_octets` is the encoded value that goes inside [3]."""
-    parameters = (context_object_id(0, object_type, instance) + context_unsigned(1, property_identifier) +
-                  opening(3) + value_octets + closing(3))
+def write_property_request(invoke_id, object_type, instance, property_identifier, value_octets,
+                           priority=None, array_index=None):
+    """WriteProperty (cl. 15.9). `value_octets` is application-tagged (application_real(),
+    application_null() to relinquish a commandable property, ...); `priority` 1..16 or None."""
+    parameters = context_object_id(0, object_type, instance) + context_unsigned(1, property_identifier)
+    if array_index is not None:
+        parameters += context_unsigned(2, array_index)
+    parameters += opening(3) + value_octets + closing(3)
     if priority is not None:
         parameters += context_unsigned(4, priority)
     return confirmed_request(invoke_id, SERVICE_WRITE_PROPERTY, parameters)
@@ -461,6 +513,17 @@ def read_tag(data, position):
     return number, is_context, "value", data[position:position + length_value], position + length_value
 
 
+def i_am_device_instance(apdu):
+    """The Device instance an I-Am APDU (cl. 16.10.2) announces, or None if `apdu` is not an I-Am."""
+    if len(apdu) < 7 or apdu[0] >> 4 != PDU_UNCONFIRMED_REQUEST or apdu[1] != SERVICE_I_AM:
+        return None
+    number, is_context, kind, body, _ = read_tag(apdu, 2)
+    if is_context or number != 12 or len(body) != 4:   # application tag 12 = BACnetObjectIdentifier
+        return None
+    identifier = struct.unpack(">I", body)[0]
+    return identifier & MAX_INSTANCE if identifier >> 22 == OBJECT_TYPE_DEVICE else None
+
+
 def read_property_value(apdu):
     """The value octets inside a ReadProperty ComplexACK's [3] opening/closing tags, or None."""
     position = 3
@@ -530,3 +593,70 @@ def read_access_specifications(value):
         elif kind == "close" and number == 1:
             current = None
     return members
+
+
+def decode_application(octets):
+    """The first application-tagged primitive in `octets` as a Python value, or None if it
+    is not one: NULL -> None, BOOLEAN -> bool, Unsigned/Enumerated -> int, Signed -> int,
+    REAL/Double -> float, CharacterString -> str, BIT STRING -> list of bool (bit 0 first),
+    ObjectIdentifier -> (type, instance), anything else -> the raw bytes.
+    Use application_tag() to tell an Unsigned from an Enumerated."""
+    if not octets:
+        return None
+    number, is_context, kind, body, _ = read_tag(octets, 0)
+    if is_context or kind != "value":
+        return None
+    if number == TAG_NULL:
+        return None
+    if number == TAG_BOOLEAN:
+        return bool(body[0])
+    if number in (TAG_UNSIGNED, TAG_ENUMERATED):
+        return int.from_bytes(body, "big")
+    if number == TAG_SIGNED:
+        return int.from_bytes(body, "big", signed=True)
+    if number == TAG_REAL:
+        return struct.unpack(">f", body)[0]
+    if number == TAG_DOUBLE:
+        return struct.unpack(">d", body)[0]
+    if number == TAG_CHARACTER_STRING:
+        return body[1:].decode("utf-8", errors="replace")
+    if number == TAG_BIT_STRING:
+        unused = body[0]
+        bits = []
+        for octet in body[1:]:
+            bits.extend(bool(octet & (0x80 >> position)) for position in range(8))
+        return bits[:len(bits) - unused] if unused else bits
+    if number == TAG_OBJECT_IDENTIFIER:
+        raw = struct.unpack(">I", body)[0]
+        return raw >> 22, raw & MAX_INSTANCE
+    return body
+
+
+def decoded_values(octets):
+    """EVERY application-tagged primitive in `octets`, each decoded as decode_application()
+    does - for a property whose value is a list or a whole array (Property_List, a
+    Priority_Array read without an index). Context-tagged and constructed data is skipped."""
+    values = []
+    position = 0
+    while octets and position < len(octets):
+        start = position
+        number, is_context, kind, _, position = read_tag(octets, position)
+        if kind == "value" and not is_context:
+            values.append(decode_application(octets[start:position]))
+    return values
+
+
+def application_tag(octets):
+    """The application tag number of the first primitive in `octets`, or None."""
+    if not octets:
+        return None
+    number, is_context, _, _, _ = read_tag(octets, 0)
+    return None if is_context else number
+
+
+def error_class_and_code(apdu):
+    """(error class, error code) from an Error PDU (cl. 20.1.7), or None."""
+    values = application_values(apdu[3:])
+    if len(values) < 2:
+        return None
+    return int.from_bytes(values[0][1], "big"), int.from_bytes(values[1][1], "big")

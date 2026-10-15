@@ -36,9 +36,13 @@ about, and Wire Tests prove it (series glossary, `docs/GLOSSARY.md`).
   X'0060', a full FDT refusing a registration with NAK X'0030', `--no-bbmd`).
   Each check was run against a build with its feature removed and failed
   (`tests/README.md`).
-- `wiretest/` 0.2.0, the series' shared Wiretest Harness, vendored from
-  B-RTR (0.1.0) and extended with the Annex J BVLL messages (its own
-  `CHANGELOG.md`).
+- `wiretest/` 0.5.0, the series' shared Wiretest Harness: B-ACDC's 0.4.0
+  (the series line 0.2.0 B-RTR -> 0.3.0 B-GW -> 0.4.0 B-ACDC) plus generic
+  Annex J BVLL support and two Windows fixes (its own `CHANGELOG.md`). The
+  tests send their confirmed requests through 0.4.0's `client.Client`.
+- `common/` 3.0.0 -> 3.3.0 (from `BACnetProfileExample-B-SS-CPP`, b640a81),
+  no source change needed here. Its 3.2.0 broadcast fix does not cover the
+  BBMD re-broadcast gap (`TODO.md`).
 - `TODO.md`: the gaps outside this example the Wire Tests report, and what to
   change when the Stack Pin moves.
 - `release.yml` runs the Wire Tests on Linux after the smoke test.

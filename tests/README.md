@@ -4,8 +4,10 @@ Tests that drive the running example over BACnet/IP from outside it and fail
 when its Profile Function - carrying broadcasts between BBMDs - is removed.
 They put hand-built Annex J frames on the wire and check the octets that come
 back. They are written against the series' shared harness in
-[`../wiretest/`](../wiretest/README.md) (vendored, like `common/`); everything
-specific to this BBMD is here. Python 3 standard library only - nothing to
+[`../wiretest/`](../wiretest/README.md) (vendored, like `common/`, version
+0.5.0); everything specific to this BBMD is here. Foreign devices are
+`wiretest.Client`s, so the same socket registers, broadcasts and sends
+ReadProperty / WriteProperty / ReinitializeDevice. Python 3 standard library only - nothing to
 `pip install`.
 
 ## Running
@@ -68,7 +70,7 @@ another subnet. The Peers are Python, never another example's binary.
   each get the Forwarded-NPDU, and five registered foreign devices - a
   broadcast from one reaches the other four.
 - KNOWN GAP (Linux/macOS): B re-broadcasts the Forwarded-NPDU on its own subnet
-  (`common/` 3.0.0 sends it to B itself).
+  (`common/` 3.3.0 sends it to B itself).
 - KNOWN GAP: with the peers named at the shared LAN address, B passes A's
   Forwarded-NPDU to F2 (the stack drops it).
 
@@ -111,9 +113,12 @@ already applied the write.
 
 ## Each check fails without its feature
 
-Run 2026-10-14 against stack `6.x` @ `e6de4ffd`, Windows build (static), the
-final versions of these scripts: `main.cpp` changed as listed, rebuilt, the
-scripts run, `main.cpp` restored. Every run exits 1.
+Run 2026-10-14 against stack `6.x` @ `e6de4ffd`, Windows build (static):
+`main.cpp` changed as listed, rebuilt, the scripts run, `main.cpp` restored.
+Every run exits 1. After the move to `wiretest/` 0.5.0 and `common/` 3.3.0
+(2026-10-15) the three mutations whose checks go through `wiretest.Client` -
+ReinitializeDevice, the BBMD properties, `BACnet_IP_Mode` - were run again and
+gave the same results.
 
 | Without | Script | Result |
 |---|---|---|
