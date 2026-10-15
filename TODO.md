@@ -29,7 +29,8 @@ The stack's own tests cover only the first half
 - Effect here: on one host the peers must be named at `127.0.0.1` (README "Two BBMDs on
   one host"). On a real site, two BBMDs on one IP subnet would not pass each other's
   broadcasts to their foreign devices.
-- Not filed yet - needs the owner's OK.
+- Fixed upstream: [#3651](https://github.com/chipkin/cas-bacnet-stack/issues/3651) (restored in #3856, squash `c999eeb0`) on `issues/runbook`;
+  not yet in `6.x`. The gap should close when the pin moves past that fix.
 
 ## Stack: a BDT write takes effect at once, not on ReinitializeDevice
 
@@ -45,8 +46,8 @@ it answers the WriteProperty, and `Changes_Pending` stays FALSE.
   ACTIVATE_CHANGES / WARMSTART, and the test already sends ACTIVATE_CHANGES before it
   expects the new peer to be served, so the test needs no change when the stack is fixed.
 - Check whether `6.x` after `e6de4ffd` (#2866 `BACnetStack_ActivateNetworkPortPendingChanges`,
-  #3321) already makes the BDT a pending change; if not, it is a stack issue to file
-  (owner's OK first).
+  #3321) already makes the BDT a pending change. It does not on `issues/runbook` @ `b790b97dd`:
+  filed as [#3930](https://github.com/chipkin/cas-bacnet-stack/issues/3930).
 
 ## `common/`: the stack's `broadcast` flag is ignored when it comes with an address
 
@@ -59,6 +60,8 @@ it.
 
 - Wire Test: `forwarding_test.py`, `[KNOWN GAP] B re-broadcasts it on its own subnet`
   (Linux/macOS only - Windows cannot open the capture socket).
+- Stack side filed as [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933): the `broadcast` flag is undocumented, and the
+  two-hop re-broadcast passes the BBMD's own address.
 - Fix belongs in `BACnetProfileExample-B-SS-CPP` `common/`, then re-copied to every
   example. Careful: the stack also passes `broadcast = true` together with a foreign
   device's address when its device answers a Who-Is that arrived from that foreign
