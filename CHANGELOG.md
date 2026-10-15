@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.2] - unreleased
 
+### Changed - honesty pass (2026-10-14)
+
+- **Stack Pin moved `abd4cee1` (6.0.21) -> `6.x` @ `e6de4ffd` (6.0.23)**, per
+  docs/adr/0001 (the pin follows the latest `6.x` when an example is updated).
+  Not the `6.x` tip `4b27bd56d`: that tip fails to link any customer
+  (non-test-tool) build - `RecordTypedGetDecline` is defined only under
+  `BACNET_STACK_TESTTOOL` (stack #3850, fixed on `issues/runbook` but not yet
+  promoted to `6.x`). `e6de4ffd` is the newest `6.x` commit that links. Builds
+  clean (STATIC) with no source change.
+- **Protocol_Revision is 30, not 24** - the stack default at this pin. README,
+  PICS, TUTORIAL, AGENTS.md and `main.cpp` comments said 24.
+- README version banner and sample output, and PICS Application Software
+  Version / Firmware Revision, now match what the program reports
+  (`APP_VERSION`, the linked stack version, `common/` 3.0.0).
+- Series profile table re-synced (B-ACCR and B-DAP marked as Blocked Examples).
+- **BDT configuration corrected.** `main.cpp` and TUTORIAL said a client can
+  write the BDT with Write-Broadcast-Distribution-Table. Annex J.4.4 says the
+  BDT is supplied by writing the Network Port's `BBMD_Broadcast_Distribution_Table`
+  property, and J.4.4.2 requires every B/IP device to NAK the BVLL message with
+  `X'0010'`. This example does not make that property writable.
+- PICS BVLL table gains Delete-Foreign-Device-Table-Entry,
+  Distribute-Broadcast-To-Network and Write-Broadcast-Distribution-Table (NAK).
+- README no longer says an end-to-end BBMD test is "beyond what one host can
+  show": two BBMDs on one host (same IP, different UDP ports) peer, and a
+  single-host Wire Test is planned.
+- Comments on the `BACnet_IP_Mode` = bbmd branch and the three
+  `SetPropertyEnabled` calls now say they are required at this pin and become
+  redundant once the pin includes stack #2548 / #3317 (on `6.x` after
+  `e6de4ffd`). The code is unchanged.
+
 ### Changed
 
 - **Device renamed from the series' colour placeholder "Rainbow" to "Chipkin

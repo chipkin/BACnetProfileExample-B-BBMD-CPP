@@ -18,10 +18,10 @@ see [README.md](../README.md).
 | **Vendor Identifier** | 389 |
 | **Product Name** | CAS BACnet Stack Example - B-BBMD |
 | **Product Model Number** | CAS BACnet Stack Example - B-BBMD |
-| **Application Software Version** | 1.0.0 |
-| **Firmware Revision** | 1.0.0 |
+| **Application Software Version** | 1.1.2 (`APP_VERSION` in `main.cpp`) |
+| **Firmware Revision** | the linked CAS BACnet Stack version (6.0.23.0 at this Stack Pin) |
 | **BACnet Protocol Version** | 1 |
-| **BACnet Protocol Revision** | 24 |
+| **BACnet Protocol Revision** | 30 |
 
 **Product Description:** a BACnet/IP Broadcast Management Device built on the
 CAS BACnet Stack. It carries the same object model as the B-ASC example - three
@@ -71,11 +71,16 @@ scheduling (SCHED-*), or trending (T-*).
 | Register-Foreign-Device (Annex J) | no | **yes** (accepted into the FDT) |
 | Read-Broadcast-Distribution-Table (Annex J) | no | **yes** |
 | Read-Foreign-Device-Table (Annex J) | no | **yes** |
+| Delete-Foreign-Device-Table-Entry (Annex J) | no | **yes** (entry removed; BVLC-Result NAK `X'0050'` if absent) |
+| Distribute-Broadcast-To-Network (Annex J) | no | **yes** (from a registered foreign device) |
+| Write-Broadcast-Distribution-Table (Annex J) | no | always **NAK** - BVLC-Result `X'0010'`, as J.4.4.2 requires |
 
 An unsolicited I-Am is broadcast to the local subnet at start-up, as well as in
-response to Who-Is. `Distribute-Broadcast-To-Network` and `Forwarded-NPDU` (both
-Annex J, part of the BBMD function itself) are handled entirely by the stack, not
-by application code.
+response to Who-Is. Every Annex J BVLL message above, and `Forwarded-NPDU`, is
+handled entirely by the stack, not by application code. The BDT is configured
+by WriteProperty of the Network Port's `BBMD_Broadcast_Distribution_Table`
+(Annex J.4.4), never by `Write-Broadcast-Distribution-Table`; this example does
+not make that property writable, so its BDT is fixed at start-up.
 
 Any other confirmed service is rejected - including ReadPropertyMultiple,
 SubscribeCOV, and any alarm/event or scheduling service.

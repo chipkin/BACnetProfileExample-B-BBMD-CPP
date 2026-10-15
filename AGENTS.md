@@ -68,7 +68,7 @@ Interactive keys while running: `h` help, `q` quit, up/down nudge Analog Input 1
   device instance **389020**.
 - Implement **only** what B-BBMD requires — DS-RP-B, DS-WP-B, DM-DDB-B, DM-DOB-B,
   DM-DCC-B, NM-BBMDC-B — but expose **every required property** of each object for
-  Protocol_Revision 24. Do not add COV, alarms, scheduling, or trending.
+  Protocol_Revision 30. Do not add COV, alarms, scheduling, or trending.
 - The objects and the DS-WP-B / DM-DCC-B code are **identical to B-ASC** on
   purpose (the series' through-line rule: code demonstrating a shared BIBB is the
   same in every example that has it). If you change them here, they must change in
@@ -123,7 +123,7 @@ There are no unit tests; verification is behavioural:
 4. **ReadProperty** `Network Port 1` `BACnet_IP_Mode` → must be `bbmd` (2), not
    `normal`. This is what tells a client the port performs the BBMD function.
 5. **ReadProperty** every required property of every object; confirm
-   `Protocol_Revision` is 24 and `Object_List` lists all eight objects.
+   `Protocol_Revision` is 30 and `Object_List` lists all eight objects.
 6. Exercise DM-DCC-B: DeviceCommunicationControl `disable-initiation` is accepted;
    the plain `disable` is answered `service-request-denied` at Protocol_Revision
    ≥ 20 (a deprecation the stack applies, not a bug here).

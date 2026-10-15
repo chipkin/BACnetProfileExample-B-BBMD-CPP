@@ -66,8 +66,14 @@ and it is a real per-entry decision:
   directed broadcasts, which most are configured **not** to do - so this usually
   fails silently.
 
-A real product would load this table from its configuration, and/or let a
-client write it over BACnet with `Write-Broadcast-Distribution-Table`.
+A real product would load this table from its configuration. Over BACnet,
+Annex J.4.4 is explicit that the BDT "shall be supplied by writing to the
+BBMD_Broadcast_Distribution_Table property of the Network Port Object" - that
+is, **WriteProperty**, not the `Write-Broadcast-Distribution-Table` BVLL
+message. J.4.4.2 requires every B/IP device to answer that BVLL message with a
+BVLC-Result of `X'0010'` (NAK), and the stack does. This example does not make
+`BBMD_Broadcast_Distribution_Table` writable, so its BDT is set at start-up
+only.
 
 ## Three traps worth knowing before you copy this
 
@@ -143,7 +149,7 @@ the most moving parts:
 | Property | Served by | How |
 |---|---|---|
 | `Object_Identifier`, `Object_Type`, `Object_List`, `Property_List`, `Status_Flags` | **stack** | generated from the object you added |
-| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 24) |
+| `Current_Command_Priority` | **stack** | computed from the Priority_Array (required at Protocol_Revision 30) |
 | `Present_Value` | **you (write) / stack (read)** | `SetPropertyReal` accepts a direct write; on read the **stack computes** it from the Priority_Array slots (highest non-null, or `Relinquish_Default`) |
 | `Priority_Array`, `Relinquish_Default` | **you** | the typed getters serve each slot; `GetPropertyBool` reports whether a slot is null |
 | `Object_Name` | **you** | `GetPropertyCharString` |
