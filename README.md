@@ -19,7 +19,7 @@ capability the profile exists for - forwards broadcasts between subnets as a
 
 > **Versions:** this document describes **example v1.2.0**, built and verified
 > against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.4.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -216,7 +216,7 @@ Expected output:
 ```
 BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.3.0
+Common helper (common/) version: 3.4.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 FYI: this device is a BBMD. Broadcast Distribution Table:
       [0] 192.168.3.64:47808  mask 255.255.255.255   <- this device
@@ -353,6 +353,9 @@ workflow runs the same command on Linux after the smoke test. What each script
 proves, and the run that showed each check fails without its feature, is in
 [tests/README.md](tests/README.md). In short:
 
+- **Discovery** (`discovery_test.py`): Who-Is, then every property of every
+  object reads as a value, the way a client such as BACnet Explorer discovers
+  the device.
 - **The Profile Function** (`forwarding_test.py`): two instances, BBMD A and
   BBMD B, peered two-hop. A Python foreign device F1 registered with A sends a
   Who-Is as Distribute-Broadcast-To-Network; Python foreign device F2,
@@ -382,10 +385,9 @@ What the Wire Tests do **not** show:
   stack's unit tests (`tests/BACnetBBMDTests.cpp` in the stack) also cover the
   re-broadcast logic. A real two-subnet test - two BBMDs on two IP subnets, a
   device behind each - is done by hand when needed.
-  On Linux the test reports it as a `[KNOWN GAP]` today: the vendored `common/` sends
-  B's re-broadcast to B's own address (stack
-  [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933),
-  [TODO.md](TODO.md)).
+  On Linux it is a counted check since `common/` 3.4.0; up to 3.3.0 the vendored
+  `common/` sent B's re-broadcast to B's own address (stack
+  [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933)).
 - **A BDT write waiting for ReinitializeDevice.** Cl. 12.56.38 says a written
   BDT becomes effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART;
   stack `6.x` @ `64b2cfac5` applies it at once

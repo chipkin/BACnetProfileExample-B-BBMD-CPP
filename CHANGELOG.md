@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Profile-functional: the example now carries broadcasts between BBMDs it is told
 about, and Wire Tests prove it (series glossary, `docs/GLOSSARY.md`).
 
+### Changed - `common/` 3.4.0, `wiretest/` 0.6.0, discovery Wire Test (2026-10-15)
+
+- **`common/` 3.4.0** (from `BACnetProfileExample-B-SS-CPP` `5d78299`, verbatim):
+  `HelperSendMessage` sends a broadcast the stack addresses to this socket's own
+  address to the subnet broadcast. **Gap closed:** B's two-hop local re-broadcast
+  (J.4.5, stack #3933) now reaches its subnet; `forwarding_test.py` counts it
+  (Linux/macOS, where the broadcast can be captured), and it fails with the
+  3.4.0 change reverted (14/15, `tests/README.md`). TODO.md entry removed.
+- **`wiretest/` 0.6.0** (from `BACnetProfileExample-B-LS-CPP`, verbatim); no test
+  needed a change.
+- **New `tests/discovery_test.py`**, the series' discovery Wire Test from
+  B-SS-CPP: Who-Is (one visible `[RETRY]` if no I-Am comes back), then every
+  property of all eight objects reads as a value. In `run_wire_tests.py`, so
+  the Linux CI step runs it.
+- Wire Tests 2026-10-15, `--port 47960`: Windows static - discovery 14/14,
+  forwarding 14/14, tables 21/21 (1 known gap, #3930), failure modes 25/25,
+  0 `[RETRY]`; Linux (WSL2) - 14/14, 15/15, 21/21 (1 known gap), 25/25.
+
 ### Changed - Stack Pin `6.x` @ `64b2cfac5` (2026-10-15)
 
 - **Stack Pin moved `e6de4ffd` -> `6.x` @ `64b2cfac5`** (still reports 6.0.23),

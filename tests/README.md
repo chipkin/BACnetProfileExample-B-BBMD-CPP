@@ -5,7 +5,7 @@ when its Profile Function - carrying broadcasts between BBMDs - is removed.
 They put hand-built Annex J frames on the wire and check the octets that come
 back. They are written against the series' shared harness in
 [`../wiretest/`](../wiretest/README.md) (vendored, like `common/`, version
-0.5.0); everything specific to this BBMD is here. Foreign devices are
+0.6.0); everything specific to this BBMD is here. Foreign devices are
 `wiretest.Client`s, so the same socket registers, broadcasts and sends
 ReadProperty / WriteProperty / ReinitializeDevice. Python 3 standard library only - nothing to
 `pip install`.
@@ -18,7 +18,7 @@ Build the example (README "Build"), then from the repository root:
 python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD
 ```
 
-It runs the three scripts below one after another and ends with
+It runs the four scripts below one after another and ends with
 `ALL WIRE TESTS PASSED` (exit 0) or the scripts that failed, after about two
 minutes. Each script also runs on its own with the same `--exe` / `--port`
 options; `--port` (default 47900) moves the whole set of UDP ports (each script
@@ -54,6 +54,18 @@ local re-broadcast - the stack judges that from the sender's IP. Over
 `127.0.0.1` the datagram arrives from a different address, as from a peer on
 another subnet. The Peers are Python, never another example's binary.
 
+## `discovery_test.py` - discovery, the way a client does it
+
+The series' discovery Wire Test (from `BACnetProfileExample-B-SS-CPP`), on one
+instance at `--port` with no `--bdt` (a BBMD with no peers, as out of the box):
+a unicast Who-Is gets the I-Am of Device 389020 (sent once more, with a visible
+`[RETRY]` line, if no I-Am comes back in 3 s - Who-Is is unconfirmed and the
+example's socket can drop a datagram on Windows); Device `Object_List` names
+exactly the eight objects `main.cpp` creates (the control); then every property
+in every object's `Property_List`, plus the four cl. 12.1.1.4.1 leaves out, reads
+as a value. Network Port 1 `IP_DNS_Server`, `FD_BBMD_Address` and
+`FD_Subscription_Lifetime` are checked by name (B-SS-CPP #20-#22).
+
 ## `forwarding_test.py` - the Profile Function (NM-BBMDC-B, J.4.5)
 
 - **Tables:** Read-Broadcast-Distribution-Table of A and of B lists itself and
@@ -72,8 +84,10 @@ another subnet. The Peers are Python, never another example's binary.
   F1 and F2 register, and B still passes A's Forwarded-NPDU to F2 (J.4.5; stack
   #3651 - `6.x` @ `e6de4ffd` dropped it, and this was a known gap until the pin
   moved to `64b2cfac5`).
-- KNOWN GAP (Linux/macOS): B re-broadcasts the Forwarded-NPDU on its own subnet
-  (`common/` 3.3.0 sends it to B itself; stack #3933).
+- **Local re-broadcast** (Linux/macOS): B re-broadcasts the Forwarded-NPDU on its
+  own subnet (J.4.5, two-hop). A known gap until `common/` 3.4.0, which sends a
+  broadcast addressed to the socket's own address to the subnet broadcast (stack
+  #3933); before that it went to B itself.
 
 ## `tables_test.py` - managing the tables (J.4.4, J.5.2)
 
@@ -159,6 +173,12 @@ rebuild. Each was restored afterwards and the full suite passed again on both.
 | Stack #3317: `SetBBMD` does not enable the three BBMD properties (`BACnetDBDevice.cpp`) | `tables_test.py` | 15/21 - ReadProperty and WriteProperty of `BBMD_Broadcast_Distribution_Table` get unknown-property, so the second peer is never added |
 | | `failure_modes_test.py` | 20/25 - `BBMD_Accept_FD_Registrations` is unknown-property, so it cannot be read, written or activated |
 
-The B re-broadcast and BDT-pending checks are `[KNOWN GAP]`s, not counted; they
-fail today for reasons outside this example (`TODO.md`) and will print
-`[GAP CLOSED]` when those are fixed.
+The BDT-pending check is a `[KNOWN GAP]`, not counted; it fails today for a
+reason outside this example (`TODO.md`) and will print `[GAP CLOSED]` when that
+is fixed.
+
+Run 2026-10-15 with `common/` 3.4.0, on the Linux (WSL2) build, restored afterwards:
+
+| Without | Script | Result |
+|---|---|---|
+| `common/` 3.4.0's own-address broadcast rewrite in `HelperSendMessage` (`common/CASExampleHelper.cpp`, i.e. 3.3.0 behaviour) | `forwarding_test.py` | 14/15 - B's local re-broadcast never reaches the subnet broadcast address |

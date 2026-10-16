@@ -15,9 +15,10 @@ with A) and F2 (registered with B). Then:
   3. B's own device answers that Who-Is with an I-Am, which reaches F2 (from B) and F1
      (B -> A -> F1): discovery works across the two BBMDs in both directions.
   4. F1 does not get its own broadcast back (J.4.5: "except the originating node").
-  5. KNOWN GAP (Linux/macOS, where the broadcast can be captured): B re-broadcasts the
-     Forwarded-NPDU on its own subnet (J.4.5, two-hop) - common/ 3.3.0 sends it to B
-     itself instead (TODO.md).
+  5. Linux/macOS, where the broadcast can be captured: B re-broadcasts the
+     Forwarded-NPDU on its own subnet (J.4.5, two-hop). The stack hands it to common/
+     addressed to B's own B/IP address with broadcast=true; common/ 3.4.0 sends that to
+     the subnet broadcast (up to 3.3.0 it went to B itself - stack #3933).
   6. K.6.6 minimums, on a third instance C: five peer BBMDs (Python sockets) each get the
      Forwarded-NPDU, and with five foreign devices registered, a broadcast from one
      reaches the other four.
@@ -110,13 +111,15 @@ def two_bbmds(args):
                         f"{len(echoed)} copies" if echoed else "")
 
         # 5. B's local re-broadcast (two-hop). The stack hands it to common/ addressed to B's
-        #    own B/IP address with broadcast=true; common/ 3.3.0 ignores the flag and
-        #    unicasts it to B itself, so nothing reaches the subnet broadcast address.
+        #    own B/IP address with broadcast=true; common/ 3.4.0 HelperSendMessage sends a
+        #    broadcast addressed to its own socket to the subnet broadcast address (up to
+        #    3.3.0 it unicast it to B itself and this check failed - stack #3933).
         if b_broadcasts:
             local = forwarded_who_is(b_broadcasts, foreign_1.mac, 2)
-            wiretest.known_gap(f"B re-broadcasts it on its own subnet ({broadcast_ip}:{port_b}, J.4.5)", local is not None,
-                               "common/ 3.3.0 HelperSendMessage ignores the stack's broadcast flag when it is "
-                               "given an address, and sends B's re-broadcast to B's own unicast address (stack #3933)")
+            wiretest.record(f"B re-broadcasts it on its own subnet ({broadcast_ip}:{port_b}, J.4.5)", local is not None,
+                            local.describe() if local else
+                            "nothing reached the subnet broadcast address (common/ older than 3.4.0 sends B's "
+                            "re-broadcast to B's own unicast address - stack #3933)")
         else:
             print("      (B's local re-broadcast is captured on Linux/macOS only: Windows refuses a second "
                   "socket on B's port)")

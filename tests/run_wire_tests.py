@@ -16,7 +16,7 @@ from pathlib import Path
 import bbmd_setup as setup
 
 TESTS = Path(__file__).resolve().parent
-SCRIPTS = ["forwarding_test.py", "tables_test.py", "failure_modes_test.py"]
+SCRIPTS = ["discovery_test.py", "forwarding_test.py", "tables_test.py", "failure_modes_test.py"]
 
 
 def main():
