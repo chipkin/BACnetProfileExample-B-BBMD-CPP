@@ -1,0 +1,454 @@
+{
+  "capabilities": {
+    "maxApduLength": 1476,
+    "maxSegmentsAccepted": 16,
+    "objectTypesSupported": [
+      "analogInput",
+      "analogOutput",
+      "binaryInput",
+      "binaryOutput",
+      "device",
+      "multiStateInput",
+      "multiStateOutput",
+      "networkPort"
+    ],
+    "segmentation": "both",
+    "servicesExecuted": [
+      "readProperty",
+      "writeProperty",
+      "deviceCommunicationControl",
+      "reinitializeDevice",
+      "whoHas",
+      "whoIs"
+    ],
+    "servicesSupported": [
+      "readProperty",
+      "writeProperty",
+      "deviceCommunicationControl",
+      "reinitializeDevice",
+      "iAm",
+      "iHave",
+      "whoHas",
+      "whoIs"
+    ]
+  },
+  "conflicts": [],
+  "declared": {
+    "bibbs": [
+      "DS-RP-B",
+      "DS-WP-B",
+      "DM-DDB-B",
+      "DM-DOB-B",
+      "DM-DCC-B",
+      "NM-BBMDC-B"
+    ],
+    "options": {
+      "4.6::Contains commandable properties": "Analog Output 1, Binary Output 1 and Multi-state Output 1 Present_Value are commandable (16-slot Priority_Array, Relinquish_Default; main.cpp outputs[] + SetPropertyWritable PRESENT_VALUE).",
+      "4.6::Contains writable Enumerated properties": "Binary Output 1 Present_Value (BACnetBinaryPV) is writable.",
+      "4.6::Contains writable REAL properties": "Analog Output 1 Present_Value (REAL) is writable.",
+      "4.6::Contains writable Unsigned properties": "Multi-state Output 1 Present_Value (Unsigned) is writable.",
+      "4.6::Contains writable non-array properties": "Analog Output 1, Binary Output 1 and Multi-state Output 1 Present_Value are writable non-array properties.",
+      "8.14::Supports receiving a DeviceCommunicationControl service request with an indefinite duration": "main.cpp DeviceCommunicationControl() accepts a request without Time_Duration (useTimeDuration false: \"indefinitely\")."
+    },
+    "source": "operator"
+  },
+  "discovered": {
+    "capturedAt": "2026-10-22T10:15:10.551Z",
+    "readDeviceProperties": {
+      "applicationSoftwareVersion": "1.2.0",
+      "firmwareRevision": "6.0.23.0",
+      "modelName": "CAS BACnet Stack Example - B-BBMD",
+      "objectName": "Chipkin Example B-BBMD",
+      "protocolRevision": 30,
+      "protocolVersion": 1,
+      "vendorId": 389,
+      "vendorName": "Chipkin Automation Systems"
+    },
+    "whoIsResults": [
+      {
+        "deviceInstance": 389020,
+        "maxApdu": 1476,
+        "segmentation": "both",
+        "vendorId": 389
+      }
+    ]
+  },
+  "identity": {
+    "applicationSoftwareVersion": "1.2.0",
+    "deviceInstance": 389020,
+    "firmwareRevision": "6.0.23.0",
+    "modelName": "CAS BACnet Stack Example - B-BBMD",
+    "objectName": "Chipkin Example B-BBMD",
+    "protocolRevision": 30,
+    "protocolVersion": 1,
+    "vendorId": 389,
+    "vendorName": "Chipkin Automation Systems"
+  },
+  "network": {
+    "address": {
+      "ip": "127.0.0.1",
+      "port": 47837
+    },
+    "transport": "bacnetIp"
+  },
+  "objects": [
+    {
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "analogInput"
+      },
+      "objectName": "Bronze",
+      "properties": {
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "units": {
+          "name": "degreesCelsius",
+          "tag": "enumerated",
+          "value": 62
+        }
+      }
+    },
+    {
+      "commandable": true,
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "analogOutput"
+      },
+      "objectName": "Chartreuse",
+      "properties": {
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "relinquishDefault": {
+          "tag": "real",
+          "value": 20
+        },
+        "units": {
+          "name": "degreesCelsius",
+          "tag": "enumerated",
+          "value": 62
+        }
+      },
+      "writable": true
+    },
+    {
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "binaryInput"
+      },
+      "objectName": "Emerald",
+      "properties": {
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "polarity": {
+          "name": "normal",
+          "tag": "enumerated",
+          "value": 0
+        }
+      }
+    },
+    {
+      "commandable": true,
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "binaryOutput"
+      },
+      "objectName": "Fuchsia",
+      "properties": {
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "polarity": {
+          "name": "normal",
+          "tag": "enumerated",
+          "value": 0
+        },
+        "relinquishDefault": {
+          "name": "inactive",
+          "tag": "enumerated",
+          "value": 0
+        }
+      },
+      "writable": true
+    },
+    {
+      "objectIdentifier": {
+        "instance": 389020,
+        "type": "device"
+      },
+      "objectName": "Chipkin Example B-BBMD",
+      "properties": {
+        "databaseRevision": {
+          "tag": "unsignedInt",
+          "value": 8
+        },
+        "maxApduLengthAccepted": {
+          "tag": "unsignedInt",
+          "value": 1476
+        },
+        "protocolRevision": {
+          "tag": "unsignedInt",
+          "value": 30
+        },
+        "protocolVersion": {
+          "tag": "unsignedInt",
+          "value": 1
+        },
+        "vendorIdentifier": {
+          "tag": "unsignedInt",
+          "value": 389
+        }
+      }
+    },
+    {
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "multiStateInput"
+      },
+      "objectName": "Hot Pink",
+      "properties": {
+        "numberOfStates": {
+          "tag": "unsignedInt",
+          "value": 3
+        },
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "stateText": {
+          "tag": "constructed",
+          "value": [
+            {
+              "tag": "characterString",
+              "value": "On"
+            },
+            {
+              "tag": "characterString",
+              "value": "Off"
+            },
+            {
+              "tag": "characterString",
+              "value": "Auto"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "commandable": true,
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "multiStateOutput"
+      },
+      "objectName": "Indigo",
+      "properties": {
+        "numberOfStates": {
+          "tag": "unsignedInt",
+          "value": 3
+        },
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "relinquishDefault": {
+          "tag": "unsignedInt",
+          "value": 1
+        }
+      },
+      "writable": true
+    },
+    {
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "networkPort"
+      },
+      "objectName": "Vermilion",
+      "properties": {
+        "apduLength": {
+          "tag": "unsignedInt",
+          "value": 1476
+        },
+        "networkType": {
+          "name": "ipv4",
+          "tag": "enumerated",
+          "value": 5
+        },
+        "outOfService": {
+          "tag": "boolean",
+          "value": false
+        },
+        "protocolLevel": {
+          "name": "bacnetApplication",
+          "tag": "enumerated",
+          "value": 2
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "epicsHeader": {
+      "characterSetsSupported": "derived",
+      "dataLinkOptions": "derived",
+      "deviceProfile": "user-entered",
+      "productDescription": "user-entered",
+      "specialFunctionality": "derived"
+    },
+    "generatedAt": "2026-10-22T10:15:10.551Z",
+    "snapshotCapturedAt": "2026-10-22T10:15:10.551Z",
+    "testPoints": 3
+  },
+  "testDatabase": {
+    "commandableTestPoints": [
+      {
+        "defaultPriority": 16,
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "analogOutput"
+        },
+        "propertyIdentifier": "presentValue"
+      },
+      {
+        "defaultPriority": 16,
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "binaryOutput"
+        },
+        "propertyIdentifier": "presentValue"
+      },
+      {
+        "defaultPriority": 16,
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "multiStateOutput"
+        },
+        "propertyIdentifier": "presentValue"
+      }
+    ],
+    "deviceConfigurationScenario": {
+      "notes": "The Device object is the only object whose identity can change, and only by start-up configuration: restart the example with --deviceID <n> or --deviceName <text>. A WriteProperty to the Device's Object_Name or Object_Identifier is refused (write-access-denied), so nothing changes over the network.",
+      "objectNameChangeMethod": "replaceConfiguration",
+      "safeAlternateObjectIdentifier": {
+        "instance": 389920,
+        "type": "device"
+      },
+      "safeAlternateObjectName": "Chipkin Example B-BBMD Alt"
+    },
+    "identityMutationTestPoints": [
+      {
+        "notes": "The Device object is the only object whose identity can change, and only by start-up configuration: restart the example with --deviceID <n> or --deviceName <text>. A WriteProperty to the Device's Object_Name or Object_Identifier is refused (write-access-denied), so nothing changes over the network.",
+        "objectIdentifier": {
+          "instance": 389020,
+          "type": "device"
+        },
+        "safeAlternateObjectIdentifier": {
+          "instance": 389920,
+          "type": "device"
+        },
+        "safeAlternateObjectName": "Chipkin Example B-BBMD Alt"
+      }
+    ],
+    "initiatedServices": [
+      "iAm",
+      "iHave"
+    ],
+    "multiStateInputStateTextScenario": {
+      "initialSize": 3,
+      "numberOfStatesPropertyIdentifier": "numberOfStates",
+      "objectIdentifier": {
+        "instance": 1,
+        "type": "multiStateInput"
+      },
+      "stateTextPropertyIdentifier": "stateText"
+    },
+    "networkPort": {
+      "activeOne": {
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "networkPort"
+        }
+      }
+    },
+    "objectDeletion": "none",
+    "passwords": {},
+    "rebootWindow": {
+      "activateChangesMs": 30000,
+      "coldstartMs": 60000,
+      "warmstartMs": 30000
+    },
+    "remoteWhoHasExecution": {
+      "allowedResponseNpdus": [
+        {
+          "destination": {
+            "dnet": 65535
+          }
+        },
+        {
+          "destination": {
+            "dnet": 99
+          }
+        },
+        {
+          "destination": {
+            "dadr": "01",
+            "dnet": 99
+          }
+        }
+      ],
+      "notes": [
+        "TD-side choice for the remote-network Who-Has / Who-Is rows (135.1 9.32.2.x, 9.33.2.x): remote network X = 99, source address Y = 01. The allowed response paths are the clause three: global broadcast, remote broadcast to X, the TD on X."
+      ],
+      "requestNpdu": {
+        "destination": {
+          "dnet": "globalBroadcast"
+        },
+        "source": {
+          "sadr": "01",
+          "snet": 99
+        }
+      }
+    },
+    "timeouts": {
+      "apdu": 3000,
+      "reply": 1000,
+      "segment": 1000
+    },
+    "writableTestPoints": [
+      {
+        "notes": "Setpoint; any REAL is accepted (no Min_Pres_Value / Max_Pres_Value).",
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "analogOutput"
+        },
+        "propertyIdentifier": "presentValue",
+        "suggestedTestValue": 24,
+        "writePriority": 16
+      },
+      {
+        "notes": "0 inactive / 1 active.",
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "binaryOutput"
+        },
+        "propertyIdentifier": "presentValue",
+        "suggestedTestValue": 1,
+        "writePriority": 16
+      },
+      {
+        "notes": "States 1 .. 3.",
+        "objectIdentifier": {
+          "instance": 1,
+          "type": "multiStateOutput"
+        },
+        "propertyIdentifier": "presentValue",
+        "suggestedTestValue": 2,
+        "writePriority": 16
+      }
+    ]
+  }
+}

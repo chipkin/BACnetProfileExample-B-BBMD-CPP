@@ -58,7 +58,8 @@
 // inputs and three commandable outputs a client drives with WriteProperty. Each
 // object has a colour name (the convention shared across this example series):
 //
-//     Device 389020            "Chipkin Example B-BBMD"     (instance configurable with --deviceID)
+//     Device 389020            "Chipkin Example B-BBMD"     (instance configurable with --deviceID,
+//                                                           Object_Name with --deviceName)
 //     Analog Input  1          "Bronze"      (REAL, degrees Celsius; read-only)
 //     Binary Input  1          "Emerald"     (active / inactive; read-only)
 //     Multi-State Input 1      "Hot Pink"    (state 1..3; read-only)
@@ -84,7 +85,8 @@
 //
 // Interactive keys (handled by the shared helper): h = help, q = quit,
 // up/down = nudge Analog Input 1 by +/-1.1. Command line: --port <n>,
-// --deviceID <n>, --bdt <ip>[:<port>][/<mask>] (repeatable), --no-bbmd.
+// --deviceID <n>, --deviceName <text>, --xml, --bdt <ip>[:<port>][/<mask>]
+// (repeatable), --no-bbmd.
 //
 // All the UDP/stack plumbing lives in common/CASExampleHelper so this file can
 // stay focused on the BACnet logic.
@@ -207,7 +209,7 @@ static bool g_isBbmd = true;
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++";
-static const char* APP_VERSION = "1.2.0";
+static const char* APP_VERSION = "1.3.0";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389020 and can be overridden on the command line with --deviceID. Keep it
@@ -231,17 +233,17 @@ static uint32_t g_deviceInstance = 389020;
 // Update VENDOR_NAME below to match.
 static const uint32_t VENDOR_IDENTIFIER = 389;
 
-// The Device object's Object_Name.
-//
-// THIS IS THE ONE THAT WILL BITE YOU. Object_Name must be unique across the
-// whole BACnet internetwork, and here it is a COMPILE-TIME constant. The device
-// instance is runtime-configurable via --deviceID, but DEVICE_NAME is not - so
-// it is easy to ship two units, configure their instances correctly, and still
-// have BOTH announce Object_Name "Chipkin Example B-BBMD" - a spec violation, and a hard BTL
-// failure. In a real product Object_Name must be per-unit configurable too:
-// derive it from a serial number, DIP switches, a config file, or add a
-// --deviceName argument.
+// Your device's Object_Name - the DEFAULT one. Object_Name MUST BE UNIQUE ACROSS
+// THE BACNET INTERNETWORK (cl. 12.1.1.4) - two devices answering with the same
+// Object_Name is a spec violation, and nothing on the wire flags it as an error.
+// So it must be per-unit configurable, exactly like the instance: this example
+// takes it at start-up with --deviceName <text> (common/ ParseDeviceNameArg, read into g_deviceName in
+// main()); DEVICE_NAME is only what a unit announces when nobody configured it.
+// In your product, configure the name per unit (a serial number, DIP switches, a
+// config file, or this argument) and change the default below to something that
+// says "not configured yet".
 static const char* DEVICE_NAME = "Chipkin Example B-BBMD";
+static const char* g_deviceName = DEVICE_NAME; // --deviceName, or the default
 
 // The Device object's Description. Change it to what YOUR device actually is;
 // this string describes this tutorial.
@@ -757,7 +759,7 @@ bool GetPropertyCharString(const uint32_t deviceInstance, const uint16_t objectT
     // Object_Name - the colour name for each object.
     if (propertyIdentifier == PROPERTY_IDENTIFIER_OBJECT_NAME) {
         if (objectType == OBJECT_TYPE_DEVICE && objectInstance == g_deviceInstance) {
-            return ReturnCharacterString(DEVICE_NAME, value, valueElementCount, maxElementCount, encodingType);
+            return ReturnCharacterString(g_deviceName, value, valueElementCount, maxElementCount, encodingType);
         }
         if (objectType == OBJECT_TYPE_ANALOG_INPUT && objectInstance == ANALOG_INPUT_INSTANCE) {
             return ReturnCharacterString("Bronze", value, valueElementCount, maxElementCount, encodingType);
@@ -1055,10 +1057,10 @@ bool DeviceCommunicationControl(const uint32_t deviceInstance, const uint8_t ena
 // A written BBMD_Accept_FD_Registrations waits for this (stack #3321): write it
 // FALSE and registrations are still accepted until ACTIVATE_CHANGES. The stack
 // refuses that write (Abort) if no ReinitializeDevice callback is registered,
-// because nothing could ever activate it. AT THIS STACK PIN (6.x @ 64b2cfac5)
-// a BDT write does not wait: the stack applies it as soon as it acknowledges
-// the WriteProperty (stack #3930, TODO.md). The Wire Tests report that as a
-// known gap.
+// because nothing could ever activate it. A written BBMD_Broadcast_Distribution_Table
+// waits for it the same way (cl. 12.56.38): Changes_Pending reads TRUE and the
+// old table stays in force until ACTIVATE_CHANGES or WARMSTART. The Wire Tests
+// check both.
 // -----------------------------------------------------------------------------
 bool ReinitializeDevice(const uint32_t deviceInstance, const uint32_t reinitializedState,
                         const char* password, const uint32_t passwordLength, uint32_t* errorCode) {
@@ -1180,8 +1182,7 @@ static bool SetUpBbmd() {
     //    of X'0010' (NAK), and the stack does. The stack makes that property writable
     //    on its own (cl. 12.56.38 requires it), so a client can replace this table at
     //    run time, then send ReinitializeDevice ACTIVATE_CHANGES to make it effective
-    //    (cl. 12.56.38; see ReinitializeDevice above). At this Stack Pin the stack
-    //    applies the write at once instead (TODO.md). The replacement must keep this
+    //    (cl. 12.56.38; see ReinitializeDevice above). The replacement must keep this
     //    device's own entry, or the stack refuses it (value-out-of-range).
     for (size_t entryIndex = 0; entryIndex < g_bdtCommandLineEntries.size(); ++entryIndex) {
         const BdtCommandLineEntry& entry = g_bdtCommandLineEntries[entryIndex];
@@ -1281,7 +1282,12 @@ int main(int argc, char** argv) {
     // --- Command line + version --------------------------------------------
     // --help / --version print and exit, so handle them before we bind a socket
     // or touch the stack.
-    if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION)) {
+    // The help lists only the options this example reads: no --dcc-password (the
+    // DeviceCommunicationControl / ReinitializeDevice password is DCC_PASSWORD in
+    // this file, not a command-line option), and --deviceName (read below).
+    if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION,
+                                                   false,   // no --dcc-password
+                                                   true)) { // --deviceName
         // The shared helper prints the options every example has; these two are
         // this example's own.
         for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
@@ -1300,6 +1306,8 @@ int main(int argc, char** argv) {
     }
     const uint16_t port = CASExampleHelper::ParsePortArg(argc, argv, 47808);
     g_deviceInstance = CASExampleHelper::ParseDeviceIdArg(argc, argv, g_deviceInstance);
+    g_deviceName = CASExampleHelper::ParseDeviceNameArg(argc, argv, DEVICE_NAME);
+    CASExampleHelper::ParseXmlLogArg(argc, argv); // --xml: dump every RX/TX frame as XML instead of one line (off by default)
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
         if (strcmp(argv[argumentIndex], "--no-bbmd") == 0) {
             g_isBbmd = false;
@@ -1551,7 +1559,7 @@ int main(int argc, char** argv) {
     CASExampleHelper::SendIAm(g_deviceInstance);
 
     printf("FYI: Device %u (\"%s\") ready. Vendor ID %u. Press 'h' for help.\n",
-           g_deviceInstance, DEVICE_NAME, VENDOR_IDENTIFIER);
+           g_deviceInstance, g_deviceName, VENDOR_IDENTIFIER);
 
     // --- Run the stack ------------------------------------------------------
     // BACnetStack_Tick() processes incoming messages and timers. Call it

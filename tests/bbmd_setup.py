@@ -56,8 +56,8 @@ def parser(description):
     arguments = argparse.ArgumentParser(description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
     arguments.add_argument("--exe", default=str(wiretest.default_exe(REPOSITORY, "BACnetExampleBBBMD")),
                            help="path to BACnetExampleBBBMD (default: build/BACnetExampleBBBMD)")
-    arguments.add_argument("--port", type=int, default=47900,
-                           help="first UDP port; each script uses a few above it (default 47900)")
+    arguments.add_argument("--port", type=int, default=47837,
+                           help="first UDP port; each script uses a few above it (default 47837)")
     return arguments
 
 

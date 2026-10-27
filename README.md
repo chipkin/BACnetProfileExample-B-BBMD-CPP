@@ -17,9 +17,9 @@ capability the profile exists for - forwards broadcasts between subnets as a
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.2.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.4.0**.
+> **Versions:** this document describes **example v1.3.0**, built and verified
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `69b6249f`), at
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.5.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -214,9 +214,9 @@ CMake at it: `cmake -B build -S . -D CAS_STACK_DIR=/path/to/cas-bacnet-stack`.
 Expected output:
 
 ```
-BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0
+BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.3.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.4.0
+Common helper (common/) version: 3.5.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 FYI: this device is a BBMD. Broadcast Distribution Table:
       [0] 192.168.3.64:47808  mask 255.255.255.255   <- this device
@@ -250,13 +250,25 @@ firewall. To use a different port, pass `--port` (see below).
 > registration is refused. [TUTORIAL.md](TUTORIAL.md#troubleshooting) explains
 > them.
 
+### Run modes
+
+The example has two run modes:
+
+- **BBMD mode** (default): the Network Port reports `BACnet_IP_Mode` = `bbmd`, forwards
+  broadcasts to the peers given with `--bdt`, and keeps a Foreign Device Table.
+- **Plain device mode** (`--no-bbmd`): a plain BACnet/IP device. `BACnet_IP_Mode` is
+  `normal` and every BBMD message is refused with the NAK Annex J requires of a non-BBMD.
+  `--bdt` has no effect here, so combining the two is an error.
+
 ### Command-line options
 
 | Option | Default | Meaning |
 |--------|---------|---------|
 | `--port <n>` | `47808` | UDP port to listen on (BACnet/IP). |
 | `--deviceID <n>` | `389020` | The device's BACnet instance number (BACnet requires this to be configurable). |
+| `--deviceName <text>` | `Chipkin Example B-BBMD` | The Device object's `Object_Name`: 1..255 bytes, no control characters. It must be unique across the BACnet internetwork, so give every unit its own - BACnet requires it to be configurable, like the instance. An invalid value prints a warning and keeps the default. |
 | `--bdt <ip>[:<port>][/<mask>]` | none | A peer BBMD for the Broadcast Distribution Table; repeat once per peer. Port defaults to 47808, mask to `255.255.255.255` (two-hop). This device's own entry is added for you. |
+| `--xml` | off | Print every received and sent BACnet message as an indented XML block instead of a one-line summary - very verbose, for protocol debugging. |
 | `--no-bbmd` | off | Start as a plain BACnet/IP device (`BACnet_IP_Mode` = `normal`), not a BBMD. |
 | `--help`, `-h` | - | Show usage and exit. |
 | `--version` | - | Print the example, stack, and `common/` helper versions, then exit. |
@@ -356,6 +368,10 @@ proves, and the run that showed each check fails without its feature, is in
 - **Discovery** (`discovery_test.py`): Who-Is, then every property of every
   object reads as a value, the way a client such as BACnet Explorer discovers
   the device.
+- **Configuration** (`configuration_test.py`): `--deviceID` and `--deviceName`
+  set the Device's instance and Object_Name at start-up (Who-Is, ReadProperty,
+  Who-Has and the ready line all see them); a WriteProperty of the Object_Name
+  is refused; an invalid name keeps the default.
 - **The Profile Function** (`forwarding_test.py`): two instances, BBMD A and
   BBMD B, peered two-hop. A Python foreign device F1 registered with A sends a
   Who-Is as Distribute-Broadcast-To-Network; Python foreign device F2,
@@ -388,15 +404,10 @@ What the Wire Tests do **not** show:
   On Linux it is a counted check since `common/` 3.4.0; up to 3.3.0 the vendored
   `common/` sent B's re-broadcast to B's own address (stack
   [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933)).
-- **A BDT write waiting for ReinitializeDevice.** Cl. 12.56.38 says a written
-  BDT becomes effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART;
-  stack `6.x` @ `64b2cfac5` applies it at once
-  ([#3930](https://github.com/chipkin/cas-bacnet-stack/issues/3930)). Reported
-  as a `[KNOWN GAP]` ([TODO.md](TODO.md)).
 
-On Windows the tests pass, but more slowly: the example's socket misses some
-incoming datagrams there (see [TODO.md](TODO.md)), so the tests repeat any
-request that gets no answer.
+On Windows the receive loop waits with `select()` (`common/` 3.4.1), so requests
+are no longer dropped there. The tests still repeat any request that gets no
+answer, as a real client would, because UDP is lossy.
 
 
 ## The BACnet profile example series

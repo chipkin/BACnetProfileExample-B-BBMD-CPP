@@ -28,7 +28,7 @@ Device Table is full, when a stranger asks it to forward, and when it is not a B
 Check 1 waits out the grace period, so this script takes a little over a minute; checks
 2-5 run while it waits.
 
-    python3 tests/failure_modes_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
+    python3 tests/failure_modes_test.py [--exe build/BACnetExampleBBBMD] [--port 47837]
 """
 import sys
 import time

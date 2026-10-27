@@ -16,14 +16,14 @@ Starts one example instance (--port + 10) with one Python peer BBMD in its BDT, 
   7. WriteProperty BBMD_Broadcast_Distribution_Table adding a second peer (J.4.4) gets a
      SimpleACK and reads back as written. Cl. 12.56.38: the write sets Changes_Pending
      and becomes effective on ReinitializeDevice ACTIVATE_CHANGES or WARMSTART - so
-     until then the second peer must not be served (KNOWN GAP: the pinned stack applies
-     the write at once, TODO.md). ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK;
+     until then Changes_Pending reads TRUE and the second peer is not served.
+     ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK;
      after it Read-BDT lists the second peer and a foreign device's broadcast reaches
      it - it did not before the write.
   8. A WriteProperty that drops this BBMD's own entry is refused (Error) and the table
      keeps the second peer.
 
-    python3 tests/tables_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
+    python3 tests/tables_test.py [--exe build/BACnetExampleBBBMD] [--port 47837]
 """
 import sys
 import time
@@ -121,11 +121,10 @@ def main():
         at_peer_1, at_peer_2 = setup.broadcast(client, bbmd, [peer_1, peer_2])
         wiretest.record("before ReinitializeDevice, a broadcast still reaches the first peer (control)",
                         at_peer_1 is not None)
-        wiretest.known_gap("... the written BDT waits for ReinitializeDevice (cl. 12.56.38): Changes_Pending is "
-                           "TRUE and the second peer is not served yet",
-                           at_peer_2 is None and changes_pending == [(1, b"\x01")],
-                           f"stack 6.x @ 64b2cfac5 applies a BDT write at once, #3930 (second peer served: "
-                           f"{at_peer_2 is not None}; Changes_Pending {changes_pending})")
+        wiretest.record("... the written BDT waits for ReinitializeDevice (cl. 12.56.38): Changes_Pending is "
+                        "TRUE and the second peer is not served yet",
+                        at_peer_2 is None and changes_pending == [(1, b"\x01")],
+                        f"second peer served: {at_peer_2 is not None}; Changes_Pending {changes_pending}")
 
         answer = setup.reinitialize_device(client, bbmd, wiretest.REINITIALIZE_ACTIVATE_CHANGES)
         wiretest.record("ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK",

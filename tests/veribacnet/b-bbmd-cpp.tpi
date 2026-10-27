@@ -1,0 +1,218 @@
+PICS 0
+BACnet Protocol Implementation Conformance Statement
+Vendor Name: "Chipkin Automation Systems"
+Product Name: "CAS BACnet Stack Example - B-BBMD"
+Product Model Number: "CAS BACnet Stack Example - B-BBMD"
+Product Description: "A BACnet/IP Broadcast Management Device built on the CAS BACnet Stack. It carries the same object model as the B-ASC example - three read-only sensor objects and three commandable (WriteProperty) output objects - plus the one capability the profile exists for: its Network Port performs the BBMD function (BACnet_IP_Mode = bbmd), forwarding local broadcasts to the peers in its Broadcast Distribution Table and accepting Foreign Device registrations. It is a tutorial for implementers of the B-BBMD profile."
+
+BACnet Standardized Device Profiles Supported:
+{
+B-BBMD - BACnet Broadcast Management Device
+}
+
+BIBBs Supported:
+{
+DS-RP-B
+DS-WP-B
+DM-DDB-B
+DM-DOB-B
+DM-DCC-B
+NM-BBMDC-B
+}
+
+BACnet Standard Application Services Supported:
+{
+ReadProperty Execute
+WriteProperty Execute
+DeviceCommunicationControl Execute
+ReinitializeDevice Execute
+IAm Initiate
+IHave Initiate
+WhoHas Execute
+WhoIs Execute
+}
+
+Standard Object Types Supported:
+{
+Analog Input
+Analog Output
+Binary Input
+Binary Output
+Device
+Multi-state Input
+Multi-state Output
+Network Port
+}
+
+Data Link Layer Option:
+{
+BACnet IP, (Annex J)
+}
+
+Character Sets Supported:
+{
+ISO 10646 (UTF-8) / ANSI X3.4
+}
+
+Special Functionality:
+{
+Maximum APDU size in octets: 1476
+Segmented Requests Supported, window size: 1
+Segmented Responses Supported, window size: 1
+}
+
+Default Property Value Restrictions:
+{
+unsigned-integer: <minimum: 0; maximum: 65535>
+signed-integer: <minimum: -2147483648; maximum: 2147483647>
+real: <minimum: -3.4e+38; maximum: 3.4e+38; resolution: 0.01>
+character-string: <maximum length string: 64>
+octet-string: <maximum length string: 256>
+list: <maximum length list: 10>
+}
+
+Fail Times:
+{
+Notification Fail Time: 60
+Internal Processing Fail Time: 2
+Minimum ON/OFF Time: 2
+Schedule Evaluation Fail Time: 2
+External Command Fail Time: 5
+Program Object State Change Fail Time: 5
+Acknowledgement Fail Time: 2
+Slave Proxy Confirm Interval: 6
+Unconfirmed Response Fail Time: 4
+Activate Changes Fail Time: 30
+Auto Negotiation Fail Time: 15
+Foreign Device Registration Fail Time: 10
+Channel Write Fail Time: 30
+}
+
+List of Objects in test device:
+{
+{
+object-identifier: (analog-input, 1)
+object-name: "Bronze"
+object-type: ANALOG_INPUT
+event-state: ?
+out-of-service: FALSE
+present-value: ?
+status-flags: ?
+units: DEGREES-CELSIUS
+},
+{
+object-identifier: (analog-output, 1)
+object-name: "Chartreuse"
+object-type: ANALOG_OUTPUT
+event-state: NORMAL
+out-of-service: FALSE
+present-value: 20 W
+priority-array: {?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?} R
+relinquish-default: 20
+status-flags: (F,F,F,F)
+units: DEGREES-CELSIUS
+current-command-priority: ?
+},
+{
+object-identifier: (binary-input, 1)
+object-name: "Emerald"
+object-type: BINARY_INPUT
+event-state: ?
+out-of-service: FALSE
+polarity: NORMAL
+present-value: ?
+status-flags: ?
+},
+{
+object-identifier: (binary-output, 1)
+object-name: "Fuchsia"
+object-type: BINARY_OUTPUT
+event-state: NORMAL
+out-of-service: FALSE
+polarity: NORMAL
+present-value: INACTIVE W
+priority-array: {?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?} R
+relinquish-default: INACTIVE
+status-flags: (F,F,F,F)
+current-command-priority: ?
+},
+{
+object-identifier: (device, 389020)
+object-name: "Chipkin Example B-BBMD"
+object-type: DEVICE
+apdu-segment-timeout: 5000
+apdu-timeout: 10000
+application-software-version: "1.2.0"
+description: "Chipkin CAS BACnet Stack example - B-BBMD (BACnet Broadcast Management Device) profile. Demonstrates NM-BBMDC-B: forwards BACnet/IP broadcasts between subnets via a Broadcast Distribution Table and accepts foreign-device registrations."
+device-address-binding: ?
+firmware-revision: "6.0.23.0"
+max-apdu-length-accepted: 1476
+model-name: "CAS BACnet Stack Example - B-BBMD"
+number-of-apdu-retries: 3
+object-list: {(analog-input, 1), (analog-output, 1), (binary-input, 1), (binary-output, 1), (device, 389020), (multi-state-input, 1), (multi-state-output, 1), (network-port, 1)}
+protocol-object-types-supported: (T,T,F,T,T,F,F,F,T,F,F,F,F,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F)
+protocol-services-supported: (F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,T,F,T,F,F,T,F,F,F,F,F,T,T,F,F,F,F,F,T,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F)
+protocol-version: 1
+segmentation-supported: SEGMENTED-BOTH
+system-status: OPERATIONAL
+vendor-identifier: 389
+vendor-name: "Chipkin Automation Systems"
+protocol-revision: 30
+database-revision: 8
+max-segments-accepted: 16
+},
+{
+object-identifier: (multi-state-input, 1)
+object-name: "Hot Pink"
+object-type: MULTI_STATE_INPUT
+event-state: ?
+number-of-states: 3
+out-of-service: FALSE
+present-value: ?
+state-text: {"On", "Off", "Auto"}
+status-flags: ?
+},
+{
+object-identifier: (multi-state-output, 1)
+object-name: "Indigo"
+object-type: MULTI_STATE_OUTPUT
+event-state: NORMAL
+number-of-states: 3
+out-of-service: FALSE
+present-value: 1 W
+priority-array: {?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?} R
+relinquish-default: 1
+status-flags: (F,F,F,F)
+current-command-priority: ?
+},
+{
+object-identifier: (network-port, 1)
+object-name: "Vermilion"
+object-type: NETWORK_PORT
+out-of-service: FALSE
+reliability: NO-FAULT-DETECTED
+status-flags: (F,F,F,F)
+apdu-length: 1476
+ip-address: "host-specific (not recorded)"
+ip-default-gateway: "host-specific (not recorded)"
+ip-dns-server: "host-specific (not recorded)"
+bacnet-ip-mode: BBMD
+ip-subnet-mask: "host-specific (not recorded)"
+bacnet-ip-udp-port: 47837
+bbmd-accept-fd-registrations: TRUE W
+bbmd-broadcast-distribution-table: "host-specific (not recorded)" W
+bbmd-foreign-device-table: ?
+changes-pending: FALSE
+command: IDLE
+fd-bbmd-address: "host-specific (not recorded)"
+fd-subscription-lifetime: 0
+link-speed: 0
+mac-address: "host-specific (not recorded)"
+network-number: 0
+network-number-quality: UNKNOWN
+network-type: IPV4
+protocol-level: BACNET-APPLICATION
+command-validation-result: {{(*-*-*), *:*:*.*}, {OBJECT, SUCCESS}}
+},
+}
+End of BACnet Protocol Implementation Conformance Statement

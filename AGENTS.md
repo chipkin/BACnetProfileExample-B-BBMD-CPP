@@ -64,7 +64,7 @@ commands above.
 ## Run
 
 ```bash
-./build/BACnetExampleBBBMD [--port 47808] [--deviceID 389020] [--bdt <ip>[:<port>][/<mask>]]... [--no-bbmd]   # Linux/macOS
+./build/BACnetExampleBBBMD [--port 47808] [--deviceID 389020] [--deviceName "Chipkin Example B-BBMD"] [--bdt <ip>[:<port>][/<mask>]]... [--no-bbmd]   # Linux/macOS
 .\build\Release\BACnetExampleBBBMD.exe [same options]   # Windows
 ```
 

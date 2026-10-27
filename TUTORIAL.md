@@ -86,9 +86,8 @@ property writable (cl. 12.56.38 requires it of a BBMD). Cl. 12.56.38 also says
 the written value becomes effective only when the device receives
 ReinitializeDevice ACTIVATE_CHANGES or WARMSTART - which is why this example
 registers a ReinitializeDevice callback even though no B-BBMD BIBB names
-DM-RD-B. (At this Stack Pin the stack applies the write at once anyway; see
-`TODO.md`. Send ACTIVATE_CHANGES regardless, so your tool keeps working when
-the stack is fixed.) The written list must still contain this device's own
+DM-RD-B. Until it arrives, `Changes_Pending` reads TRUE and the old table
+stays in force. The written list must still contain this device's own
 entry, or the stack refuses it with `value-out-of-range`.
 `tests/tables_test.py` shows the encoding of both requests.
 
@@ -236,8 +235,8 @@ rather than against "it looked fine in the explorer":
 
 `docs/PICS.md` is partly generated. `docs/objects.json` describes each object
 and who serves which property; the series tool regenerates the object tables
-from it plus the stack's own `docs/property-profile-reference.md` at the
-pinned commit:
+from it plus the CAS BACnet Stack's property profiles (a reference the series
+tool vendors):
 
 ```bash
 python tools/gen-objects-properties.py BACnetProfileExample-B-BBMD-CPP            # rewrite

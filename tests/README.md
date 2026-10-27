@@ -18,10 +18,10 @@ Build the example (README "Build"), then from the repository root:
 python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD
 ```
 
-It runs the four scripts below one after another and ends with
+It runs the five scripts below one after another and ends with
 `ALL WIRE TESTS PASSED` (exit 0) or the scripts that failed, after about two
 minutes. Each script also runs on its own with the same `--exe` / `--port`
-options; `--port` (default 47900) moves the whole set of UDP ports (each script
+options; `--port` (default 47837) moves the whole set of UDP ports (each script
 uses a few above it: +0..+4, +10, +20..+23).
 
 A `[KNOWN GAP]` line is a requirement the example does not meet yet because of
@@ -29,9 +29,9 @@ a defect outside it (the stack or `common/`). It is reported on every run but
 does not fail it; [`../TODO.md`](../TODO.md) says where it has to be fixed. If
 one prints `[GAP CLOSED]`, that defect is fixed: make it a counted check.
 
-**Windows.** The tests pass, more slowly: the example's socket misses some
-incoming datagrams on Windows (`TODO.md`), so every request that gets no answer
-is asked again (`bbmd_setup.ATTEMPTS`). Every check that something does *not*
+**Windows.** The tests pass. The example's receive loop waits with `select()`
+(`common/` 3.4.1), so it no longer drops datagrams there; every request that gets
+no answer is still asked again (`bbmd_setup.ATTEMPTS`), as a real client would. Every check that something does *not*
 arrive has a positive control in the same exchange, so a lost datagram cannot
 make it pass. B's local re-broadcast is captured on Linux/macOS only.
 
@@ -61,10 +61,31 @@ instance at `--port` with no `--bdt` (a BBMD with no peers, as out of the box):
 a unicast Who-Is gets the I-Am of Device 389020 (sent once more, with a visible
 `[RETRY]` line, if no I-Am comes back in 3 s - Who-Is is unconfirmed and the
 example's socket can drop a datagram on Windows); Device `Object_List` names
-exactly the eight objects `main.cpp` creates (the control); then every property
+exactly the eight objects `main.cpp` creates (the control); Device
+`Database_Revision` reads 8, one per object added at start-up; then every property
 in every object's `Property_List`, plus the four cl. 12.1.1.4.1 leaves out, reads
 as a value. Network Port 1 `IP_DNS_Server`, `FD_BBMD_Address` and
 `FD_Subscription_Lifetime` are checked by name (B-SS-CPP #20-#22).
+
+## `configuration_test.py` - the Device's identity is configurable at start-up
+
+Cl. 12.1.1.3 and 12.1.1.4 require the Device's Object_Identifier and Object_Name
+to be configurable (Object_Name must be unique across the internetwork). One
+instance at `--port`, a BBMD with no peers, started several times over:
+
+1. **No options** (the control): Device 389020 answers Who-Is, and its
+   Object_Name is the default `Chipkin Example B-BBMD`.
+2. **`--deviceID 389920 --deviceName "Chipkin Example B-BBMD Unit 2"`**: Who-Is,
+   ReadProperty, the ready line and a Who-Has by name all see the configured
+   instance and name; 389020 answers OBJECT / UNKNOWN_OBJECT. A WriteProperty of
+   the Device's Object_Name is refused and the name is unchanged: it changes only
+   at start-up.
+3. **Limits**: an empty or a 256-byte `--deviceName` prints a warning and keeps
+   the default; a 255-byte one is served whole.
+4. **`--help`** lists `--port`, `--deviceID`, `--deviceName`, `--xml`, `--bdt` and
+   `--no-bbmd`, and not `--dcc-password` (the DeviceCommunicationControl /
+   ReinitializeDevice password is `DCC_PASSWORD` in `main.cpp`); with `--xml` the
+   console shows each frame as an XML block.
 
 ## `forwarding_test.py` - the Profile Function (NM-BBMDC-B, J.4.5)
 
@@ -106,9 +127,9 @@ ReinitializeDevice ACTIVATE_CHANGES gets a SimpleACK; then Read-BDT lists the
 second peer and the next broadcast reaches it; a write that drops this BBMD's
 own entry gets an Error and the table is unchanged.
 
-KNOWN GAP: between the write and ReinitializeDevice, cl. 12.56.38 wants
-`Changes_Pending` TRUE and the old table still in force; the pinned stack has
-already applied the write (stack #3930).
+Between the write and ReinitializeDevice, `Changes_Pending` reads TRUE and the
+old table is still in force (cl. 12.56.38). This was a known gap until the
+Stack Pin moved to `6.x` @ `29b83de6` (stack #3930); it is a counted check now.
 
 ## `failure_modes_test.py` - Failure Modes
 
@@ -173,9 +194,9 @@ rebuild. Each was restored afterwards and the full suite passed again on both.
 | Stack #3317: `SetBBMD` does not enable the three BBMD properties (`BACnetDBDevice.cpp`) | `tables_test.py` | 15/21 - ReadProperty and WriteProperty of `BBMD_Broadcast_Distribution_Table` get unknown-property, so the second peer is never added |
 | | `failure_modes_test.py` | 20/25 - `BBMD_Accept_FD_Registrations` is unknown-property, so it cannot be read, written or activated |
 
-The BDT-pending check is a `[KNOWN GAP]`, not counted; it fails today for a
-reason outside this example (`TODO.md`) and will print `[GAP CLOSED]` when that
-is fixed.
+At that pin the BDT-pending check was a `[KNOWN GAP]`, not counted (stack
+#3930). Since the Stack Pin moved to `6.x` @ `29b83de6` it passes and is a
+counted check, so `tables_test.py` has 22 checks.
 
 Run 2026-10-15 with `common/` 3.4.0, on the Linux (WSL2) build, restored afterwards:
 

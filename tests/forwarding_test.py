@@ -27,7 +27,7 @@ with A) and F2 (registered with B). Then:
      BBMD merely retransmits the message directly to each foreign device currently in
      the BBMD's FDT"). Stack #3651; 6.x @ e6de4ffd dropped it.
 
-    python3 tests/forwarding_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
+    python3 tests/forwarding_test.py [--exe build/BACnetExampleBBBMD] [--port 47837]
 """
 import os
 import sys

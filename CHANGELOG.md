@@ -5,342 +5,123 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - unreleased
+## [Unreleased]
 
-Profile-functional: the example now carries broadcasts between BBMDs it is told
-about, and Wire Tests prove it (series glossary, `docs/GLOSSARY.md`).
+_No changes yet._
 
-### Changed - `common/` 3.4.0, `wiretest/` 0.6.0, discovery Wire Test (2026-10-15)
+## [1.3.0] - 2026-10-27
 
-- **`common/` 3.4.0** (from `BACnetProfileExample-B-SS-CPP` `5d78299`, verbatim):
-  `HelperSendMessage` sends a broadcast the stack addresses to this socket's own
-  address to the subnet broadcast. **Gap closed:** B's two-hop local re-broadcast
-  (J.4.5, stack #3933) now reaches its subnet; `forwarding_test.py` counts it
-  (Linux/macOS, where the broadcast can be captured), and it fails with the
-  3.4.0 change reverted (14/15, `tests/README.md`). TODO.md entry removed.
-- **`wiretest/` 0.6.0** (from `BACnetProfileExample-B-LS-CPP`, verbatim); no test
-  needed a change.
-- **New `tests/discovery_test.py`**, the series' discovery Wire Test from
-  B-SS-CPP: Who-Is (one visible `[RETRY]` if no I-Am comes back), then every
-  property of all eight objects reads as a value. In `run_wire_tests.py`, so
-  the Linux CI step runs it.
-- Wire Tests 2026-10-15, `--port 47960`: Windows static - discovery 14/14,
-  forwarding 14/14, tables 21/21 (1 known gap, #3930), failure modes 25/25,
-  0 `[RETRY]`; Linux (WSL2) - 14/14, 15/15, 21/21 (1 known gap), 25/25.
-
-### Changed - Stack Pin `6.x` @ `64b2cfac5` (2026-10-15)
-
-- **Stack Pin moved `e6de4ffd` -> `6.x` @ `64b2cfac5`** (still reports 6.0.23),
-  per docs/adr/0001. That `6.x` now carries stack #3850, so a customer
-  (non-test-tool) build links again. Builds with no call-site change: Windows
-  static (`ReleaseLib|x64`) and Linux (WSL2).
-- **`BACnet_IP_Mode` is no longer served by the application, and the three
-  BBMD properties are no longer enabled by it.** `SetBBMD` now does both
-  (stack #2548, #3317). The callback branch and the three `SetPropertyEnabled`
-  calls are removed; TUTORIAL's "Trap 3" is gone.
-- **`BBMD_Accept_FD_Registrations` is writable** (stack #3321, cl. 12.56.39) as a
-  pending change that the example's ReinitializeDevice callback lets the stack
-  activate. New Failure Mode Wire Test (`failure_modes_test.py`, its own
-  instance on `--port` + 23): written FALSE, `Changes_Pending` TRUE and
-  registrations still accepted; after ACTIVATE_CHANGES, Register-Foreign-Device
-  NAK X'0030' (J.5.2.2); written TRUE and activated, accepted again.
-- **Gap closed: two BBMDs on one IP subnet.** With the peers at the shared LAN
-  address B now passes A's Forwarded-NPDU to its foreign devices (J.4.5, stack
-  #3651). The `[KNOWN GAP]` is a counted check in `forwarding_test.py`. The
-  one-host setup keeps naming peers at `127.0.0.1`: that is what makes the two
-  instances behave like BBMDs on different subnets, so the two-hop local
-  re-broadcast is exercised; README says so.
-- `BACnetStack_ActivateNetworkPortPendingChanges` (stack #2866) is not called:
-  its contract makes it the host's own start-up activation and forbids calling
-  it from inside a stack callback, and a received ReinitializeDevice already
-  runs the same pass. Noted in `main.cpp` and TUTORIAL.
-- Still open, still `[KNOWN GAP]`: the BDT write is not pending (stack #3930)
-  and B's local re-broadcast goes to B's own address (stack #3933 / `common/`).
-- Wire Tests 2026-10-15: Windows static and Linux, forwarding 14/14, tables
-  21/21 (1 known gap), failure modes 25/25 (Linux forwarding also reports the
-  re-broadcast known gap). Every new or converted check fails with its
-  feature removed - one `main.cpp` and four stack mutations, `tests/README.md`.
+Built on CAS BACnet Stack 6.x (69b6249f).
 
 ### Added
 
-- **`--bdt <ip>[:<port>][/<mask>]`** (repeatable): the peer BBMDs of the
-  Broadcast Distribution Table. Port defaults to 47808, mask to
-  255.255.255.255 (two-hop). Listing this device's own address sets the mask
-  of its own entry.
-- **ReinitializeDevice callback** (ACTIVATE_CHANGES and WARMSTART; other states
-  refused), on the B-SCHUB pattern. Cl. 12.56.38 makes a written
-  `BBMD_Broadcast_Distribution_Table` effective on exactly those two states, so
-  a BBMD with a writable BDT has to execute them. ReinitializeDevice is now in
-  `Protocol_Services_Supported`.
-- **`--no-bbmd`**: start as a plain BACnet/IP device (`BACnet_IP_Mode` =
-  `normal`, every BBMD message NAKed) - Annex L.7.3's "capable of being
-  reconfigured as a non-BBMD".
-- **Wire Tests** (`tests/`, Python standard library only), run by
-  `python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD`:
-  `forwarding_test.py` (a Who-Is from a foreign device on BBMD A reaches a
-  foreign device on BBMD B and B's I-Am comes back; K.6.6's five peers and
-  five foreign devices), `tables_test.py` (Read-BDT, Read-FDT,
-  Delete-FDT-Entry, Write-BDT NAK X'0010', WriteProperty of
-  `BBMD_Broadcast_Distribution_Table` + ReinitializeDevice ACTIVATE_CHANGES taking
-  effect), `failure_modes_test.py`
-  (a silent foreign device purged after TTL + 30 s and then refused with NAK
-  X'0060', a full FDT refusing a registration with NAK X'0030', `--no-bbmd`).
-  Each check was run against a build with its feature removed and failed
-  (`tests/README.md`).
-- `wiretest/` 0.5.0, the series' shared Wiretest Harness: B-ACDC's 0.4.0
-  (the series line 0.2.0 B-RTR -> 0.3.0 B-GW -> 0.4.0 B-ACDC) plus generic
-  Annex J BVLL support and two Windows fixes (its own `CHANGELOG.md`). The
-  tests send their confirmed requests through 0.4.0's `client.Client`.
-- `common/` 3.0.0 -> 3.3.0 (from `BACnetProfileExample-B-SS-CPP`, b640a81),
-  no source change needed here. Its 3.2.0 broadcast fix does not cover the
-  BBMD re-broadcast gap (`TODO.md`).
-- `TODO.md`: the gaps outside this example the Wire Tests report, and what to
-  change when the Stack Pin moves.
-- `release.yml` runs the Wire Tests on Linux after the smoke test.
+- **`--deviceName <text>`**: sets the Device's Object_Name at start-up, like
+  `--deviceID` sets its instance. Object_Name must be unique on a BACnet
+  internetwork, so two units no longer have to share the built-in name. The
+  default is unchanged (`Chipkin Example B-BBMD`). A name must be 1 to 255
+  bytes with no control characters, otherwise the example warns and keeps the
+  default. The name cannot be changed over the network.
+- **Automated self-test** `tests/configuration_test.py` checks `--deviceID` and `--deviceName`.
 
 ### Changed
 
-- **This device's own BDT entry is now two-hop (255.255.255.255), not its
-  subnet mask.** The stack reads its own entry's mask to decide whether a
-  Forwarded-NPDU from a peer must be re-broadcast locally (J.4.5); with the
-  subnet mask it assumed every Forwarded-NPDU had arrived by directed
-  broadcast and never re-broadcast one, and J.4.3.2 requires one subnet to
-  have the same mask in every BDT. The README said the own entry's mask was
-  "never used" - it is.
-- The placeholder peers (192.0.2.10 / 192.0.2.20, RFC 5737) are gone; the BDT
-  holds exactly this device plus the `--bdt` peers.
-- The BBMD set-up moved from `main()` into `SetUpBbmd()`. The BDT is printed
-  before the `ready` line.
-- Corrected: the stack does make `BBMD_Broadcast_Distribution_Table`
-  writable at this pin (cl. 12.56.38) - the 1.1.2 notes said the example did
-  not make it writable. At this pin the write takes effect when it is
-  acknowledged, not on ReinitializeDevice as cl. 12.56.38 requires (a stack
-  deviation, `TODO.md`).
-- APP_VERSION 1.1.2 -> 1.2.0.
-
-## [1.1.2] - unreleased
-
-### Changed - honesty pass (2026-10-14)
-
-- **Stack Pin moved `abd4cee1` (6.0.21) -> `6.x` @ `e6de4ffd` (6.0.23)**, per
-  docs/adr/0001 (the pin follows the latest `6.x` when an example is updated).
-  Not the `6.x` tip `4b27bd56d`: that tip fails to link any customer
-  (non-test-tool) build - `RecordTypedGetDecline` is defined only under
-  `BACNET_STACK_TESTTOOL` (stack #3850, fixed on `issues/runbook` but not yet
-  promoted to `6.x`). `e6de4ffd` is the newest `6.x` commit that links. Builds
-  clean (STATIC) with no source change.
-- **Protocol_Revision is 30, not 24** - the stack default at this pin. README,
-  PICS, TUTORIAL, AGENTS.md and `main.cpp` comments said 24.
-- README version banner and sample output, and PICS Application Software
-  Version / Firmware Revision, now match what the program reports
-  (`APP_VERSION`, the linked stack version, `common/` 3.0.0).
-- Series profile table re-synced (B-ACCR and B-DAP marked as Blocked Examples).
-- **BDT configuration corrected.** `main.cpp` and TUTORIAL said a client can
-  write the BDT with Write-Broadcast-Distribution-Table. Annex J.4.4 says the
-  BDT is supplied by writing the Network Port's `BBMD_Broadcast_Distribution_Table`
-  property, and J.4.4.2 requires every B/IP device to NAK the BVLL message with
-  `X'0010'`. This example does not make that property writable.
-- PICS BVLL table gains Delete-Foreign-Device-Table-Entry,
-  Distribute-Broadcast-To-Network and Write-Broadcast-Distribution-Table (NAK).
-- README no longer says an end-to-end BBMD test is "beyond what one host can
-  show": two BBMDs on one host (same IP, different UDP ports) peer, and a
-  single-host Wire Test is planned.
-- Comments on the `BACnet_IP_Mode` = bbmd branch and the three
-  `SetPropertyEnabled` calls now say they are required at this pin and become
-  redundant once the pin includes stack #2548 / #3317 (on `6.x` after
-  `e6de4ffd`). The code is unchanged.
-
-### Changed
-
-- **Device renamed from the series' colour placeholder "Rainbow" to "Chipkin
-  Example B-BBMD"** so devices from different examples in the series are
-  distinguishable from each other on the same BACnet network - every example
-  previously announced the identical Object_Name "Rainbow", which made two
-  examples on one subnet indistinguishable by name. Sub-object names (Analog
-  Input 1 "Bronze", etc.) are unchanged - only the Device object's name
-  changed. `docs/colour-table.md` (series root) updated to match. APP_VERSION
-  bumped 1.1.1 -> 1.1.2.
-
-## [Unreleased]
+- **A written Broadcast Distribution Table now waits for ReinitializeDevice.**
+  `Changes_Pending` reads TRUE and the old table stays in force until
+  ACTIVATE_CHANGES or WARMSTART, as cl. 12.56.38 requires. README, TUTORIAL and
+  PICS describe this.
+- **ReinitializeDevice END_BACKUP and ABORT_RESTORE** (backup and restore are not
+  supported) are answered with an Error (OPTIONAL_FUNCTIONALITY_NOT_SUPPORTED)
+  instead of an Abort, per cl. 16.4.
+- **`--help` lists only the options the example reads.** It no longer lists
+  `--dcc-password` (the password is `DCC_PASSWORD` in `main.cpp`). `--xml`, which
+  was listed but did nothing, now prints each received and sent frame as XML.
+- **Self-tests** default to UDP port 47837 (was 47900).
+- **Documentation**: PICS now claims segmentation in both directions
+  (`Max_Segments_Accepted` 16) and lists Database_Revision as 8 in both run
+  modes. Binary Input 1 "Emerald" is documented as fixed at active. The PICS
+  objects tables cite the stack's property profiles.
+- Vendored `common/` updated to 3.5.0 (see `common/CHANGELOG.md`).
 
 ### Fixed
 
-- **`Application_Software_Version` (12) and `Firmware_Revision` (44) were
-  hardcoded and stale** - both were literal `"1.0.0"` constants in
-  `main.cpp` that never moved as `APP_VERSION` advanced past 1.1.0, so a
-  client reading the Device object would see a version that no longer
-  matched the running build (or the `--version` banner). Fixed:
-  `Application_Software_Version` now reads `APP_VERSION` directly (one
-  source of truth, can't drift from `--version`'s own banner again); the
-  separate `APPLICATION_SOFTWARE_VERSION` constant is removed.
-  `Firmware_Revision` is now built at runtime from the CAS BACnet Stack's
-  own `BACnetStack_GetAPIMajorVersion()`/`GetAPIMinorVersion()`/
-  `GetAPIPatchVersion()`/`GetAPIBuildVersion()` (the same 4 calls
-  `common/CASExampleHelper.cpp`'s `PrintVersion()` already uses for the
-  startup banner), populated once into `g_firmwareRevision` right after
-  `LoadBACnetFunctions()` succeeds in `main()`; the old hardcoded
-  `FIRMWARE_REVISION` constant is removed. Bumped `APP_VERSION` to 1.1.1
-  for this fix, per this series' standing rule that any rebuild gets a
-  patch bump first.
+- **Requests no longer go unanswered on Windows.** A request that arrived just as
+  the socket's short receive timeout expired could be silently dropped. The
+  receive loop now waits with `select()` (vendored `common/` 3.4.1).
 
-### Changed
+## [1.2.0] - 2026-10-16
 
-- **Restructured the documentation** to match the series-wide README + TUTORIAL +
-  PICS shape (`docs/readme-tutorial-pics-restructure`): `README.md` is cut down
-  to this example only (BIBBs, services, objects, build, run, verify, footprint,
-  the generated series table); the extending/configuring-for-your-site guidance,
-  the "who serves what" breakdown, and Troubleshooting moved to the new
-  `TUTORIAL.md`; a new `docs/PICS.md` (ANSI/ASHRAE 135 Annex A shape) replaces
-  the README's old "Objects and properties" section, with a Device entry added
-  to `docs/objects.json` (`stack` vs `accepted` split, matching the series
-  convention) and regenerated with zero `⚠` rows.
-- **Switched the documented and released build to the adapter's default SOURCE
-  mode**, dropping the prebuilt STATIC library step
-  (`tools/build-stack-static.sh`, the `CAS_BACNET_STACK_LINK=STATIC` flag, and
-  the corresponding library cache/build steps and matrix `lib:` entries in
-  `.github/workflows/release.yml`). The build is now the same two commands
-  (`cmake -B build -S .` / `cmake --build build --config Release`) on every
-  platform, matching the rest of the series; `release.yml`'s link-mode
-  assertion now checks for `SOURCE`, its metrics JSON now records
-  `"link_mode": "SOURCE"`, and its packaged release artifact now includes
-  `TUTORIAL.md` and `docs/PICS.md`. The v1.1.0 footprint numbers were measured
-  from the old STATIC build; the README notes that the next release refreshes
-  them under the SOURCE build.
-- The "Before you ship" per-field guidance that used to live in a README table
-  is now comments next to the `CHANGE ALL OF THIS BEFORE YOU SHIP` block in
-  `main.cpp`, including the `DEVICE_NAME` / `Object_Name` uniqueness warning
-  and the device-instance uniqueness note.
-- `AGENTS.md` updated for the new file layout (`TUTORIAL.md`, `docs/PICS.md`,
-  `docs/objects.json`), the SOURCE-only build section, and a PICS-regeneration
-  verification step.
-
-## [1.1.0] - 2026-09-15
-
-### Changed
-
-- **Pinned the CAS BACnet Stack to `6.x` @ `abd4cee1` (reports 6.0.21)** and
-  switched this example's shipped build to a prebuilt **STATIC** library:
-  `tools/build-stack-static.sh` builds `CASBACnetStack_x64_Release.lib` /
-  `libCASBACnetStack_x64_Release.a` from the stack's own project files, and
-  `-DCAS_BACNET_STACK_LINK=STATIC` links it. See the README's "Link mode"
-  section. The adapter's SOURCE mode still exists but this example is no
-  longer built or published that way.
-- `common/` synced to **v2.1.0** (see `common/CHANGELOG.md`), byte-identical to
-  the other migrated examples.
-- Interface changes reaching this example's `main.cpp`:
-  - `BACnetStack_AddNetworkPortObjectWithNetworkNumber` → `BACnetStack_AddNetworkPortObject`
-    (same argument list).
-  - Every `RegisterCallbackGetProperty*` callback gains a trailing
-    `uint32_t* errorCode` out-parameter, letting a declining Get callback name
-    a specific BACnet error instead of only falling back to the stack's
-    decline-and-fabricate default. Ported B-SS's "THE errorCode
-    OUT-PARAMETER" documentation and its one real use here: `GetPropertyCharString`
-    now sets `ERROR_CODE_INVALID_ARRAY_INDEX` for an out-of-range `State_Text` index.
-  - `CASExampleHelper::SetNetworkPortInstance(NETWORK_PORT_INSTANCE)` added
-    before `RegisterCommonCallbacks()` — the transport callbacks now dispatch
-    per Network Port instance rather than per network type.
-  - `BACnetStack_AddBDTEntry` gains a leading `networkPortInstance` parameter
-    (both call sites: this device's own entry and each seeded peer).
-  - `BACnetStack_GetBDTEntry` gains a leading `networkPortInstance` parameter
-    **and now returns `uint32_t`** (the number of bytes written; `0` on
-    failure) instead of `bool`. The start-up BDT readback loop now compares
-    the result to `0` explicitly rather than negating it with `!`, which
-    still worked out logically but forced the `uint32_t` through a `bool`
-    conversion the strict build (`/W4`) flags as `C4800`.
-- `APP_VERSION` bumped to `1.1.0`.
-
-### Verified
-
-- Builds STATIC with zero warnings from `main.cpp` / `common/`.
-- Smoke test (port 47821): `v1.1.0`, `CAS BACnet Stack version: 6.0.21.0`,
-  `Common helper (common/) version: 2.1.0`, the device comes up as a BBMD and
-  reads back its own seeded 3-entry Broadcast Distribution Table (this
-  device + the two documentation-range placeholder peers).
-- `--help` / `--version` exit 0; `--deviceID` overrides the announced instance.
-- **Wire-level verification** (raw BVLL Annex J requests against the running
-  binary; no full BACnet client was available in this environment, so this
-  used a scratch UDP harness rather than the CAS BACnet Explorer):
-  - **Read-Broadcast-Distribution-Table** (BVLC 0x02): `Read-BDT-Ack` returns
-    exactly the 3 seeded entries.
-  - **Register-Foreign-Device** (BVLC 0x05) from a second UDP endpoint acting
-    as a second host: `BVLC-Result` code 0 (success), and the endpoint then
-    appears in **Read-Foreign-Device-Table** (BVLC 0x06)'s `Read-FDT-Ack`
-    with its TTL.
-  - **Distribute-Broadcast-To-Network** (BVLC 0x09) from the registered
-    foreign device: the BBMD's forwarding path (`BACnetBBMD::ProcessOutgoingMessageBBMD`)
-    visibly engages and builds a 12-byte `Forwarded-NPDU`, but this local
-    loopback test could not confirm delivery - the stack logs the same
-    "Error occurred while sending the encoded packet" already seen (and
-    expected) for the two unreachable documentation-range placeholder BDT
-    peers, and this scratch harness could not distinguish a genuine send
-    failure from that expected unreachable-peer path. **Unverified**: use a
-    real BACnet client / second host on a real subnet to confirm forwarding
-    end-to-end.
-  - `BACnet_IP_Mode = bbmd` was not re-verified with a wire ReadProperty
-    (needs full APDU encoding, not just BVLL); confirmed by code inspection
-    only (`GetPropertyEnumerated` returns `BACNET_IP_MODE_BBMD` for that
-    property) plus the fact that `BACnetStack_SetBBMD` succeeded at start-up.
-- The README's "Three traps" (6-octet BDT address, BDT-before-`SetBBMD` with
-  the self-entry, and enabling the BBMD table properties) were re-tested
-  against the new signatures and still hold exactly as written.
-
-## [1.0.0] - unreleased
-
-> Not tagged yet: this repository has no tags at all. `release.yml` publishes binaries on a `v*.*.*`
-> tag, so until that tag exists this section describes what is on the
-> branch, not what shipped.
-
-First release: a complete B-BBMD (BACnet Broadcast Management Device) tutorial.
+The example now carries broadcasts between the BBMDs it is told about. It has two
+run modes: the default BBMD mode, and `--no-bbmd`, which runs a plain BACnet/IP
+device. Built on CAS BACnet Stack 6.x (64b2cfac5, reports 6.0.23).
 
 ### Added
 
-- `main.cpp` implementing the **B-BBMD** profile and nothing more. It is the
-  [B-ASC](https://github.com/chipkin/BACnetProfileExample-B-ASC-CPP) example plus
-  the one capability the profile exists for:
-  - **NM-BBMDC-B** — this device *is* a BBMD: `BACnetStack_SetBBMD` hands
-    Network Port 1 over to the stack's BBMD machinery, and a seeded Broadcast
-    Distribution Table lists the peer BBMDs to forward local broadcasts to. The
-    stack owns the Forwarded-NPDU work, the BDT/FDT reads, and FDT ageing; the
-    application only configures the tables.
-  - `Network Port 1` reports **`BACnet_IP_Mode` = `bbmd`** (2) — every other
-    example in the series reports `normal` (0). This is how a client discovers
-    that the port performs the BBMD function.
-  - **DS-RP-B / DS-WP-B / DM-DDB-B / DM-DOB-B / DM-DCC-B** — carried over from
-    B-ASC unchanged (the series through-line rule: code demonstrating a shared
-    BIBB is identical in every example that has it).
-- Start-up prints the BDT read back through the stack's own getter, so what is
-  shown is what the BBMD will really use, with this device as entry [0].
-- Peer addresses are placeholders from the documentation range (RFC 5737
-  TEST-NET-1), deliberately unreachable so the example cannot disturb a real
-  network if run as-is; `bdtSeeds` in `main.cpp` is the one place to edit.
-- `README.md` (human tutorial), `AGENTS.md` (agent guidance), `LICENSE` (CC0-1.0),
-  the three BBMD Network Port table properties enabled explicitly (SetBBMD
-  does not do it, so ReadProperty would otherwise return unknown-property), and
-  the vendored `common/` helper (v1.3.0), and a CMake build that compiles the CAS
-  BACnet Stack from source.
+- **`--bdt <ip>[:<port>][/<mask>]`** (repeatable) lists the peer BBMDs of the
+  Broadcast Distribution Table. Port defaults to 47808 and mask to
+  255.255.255.255 (two-hop). Listing this device's own address sets the mask of
+  its own entry.
+- **`--no-bbmd`** starts the example as a plain BACnet/IP device:
+  `BACnet_IP_Mode` is `normal` and every BBMD message is refused (Annex L.7.3).
+- **ReinitializeDevice** (ACTIVATE_CHANGES and WARMSTART; other states refused)
+  is supported and listed in `Protocol_Services_Supported`. A written
+  `BBMD_Broadcast_Distribution_Table` takes effect on these two states (cl. 12.56.38).
+- **`BBMD_Accept_FD_Registrations` is writable** (cl. 12.56.39). Writing FALSE
+  and activating the change makes the BBMD refuse foreign-device registrations
+  with NAK X'0030'.
+- **Automated self-tests** under `tests/` (Python standard library only), run with
+  `python3 tests/run_wire_tests.py --exe build/BACnetExampleBBBMD`. They cover
+  broadcast forwarding between BBMDs, table reads and writes, foreign-device
+  expiry and refusal, and `--no-bbmd`.
+- `TODO.md` lists the known gaps and what to re-check when the stack changes.
 
-### Notes
+### Changed
 
-- **Two BBMD API traps are documented in the code, the README, and AGENTS.md**,
-  because both were hit while writing this example and both fail misleadingly:
-  1. A BDT entry address is **6 octets** (IP[4] + UDP port, high byte first), not
-     the bare 4-octet IP — despite `AddBDTEntry` taking a length argument that
-     makes `4` look reasonable.
-  2. The BDT must be populated **before** `SetBBMD`, and must already contain this
-     device's own entry — the stack does **not** add the self-entry for you.
-     `SetBBMD` builds the host's B/IP address from the Network Port's `IP_Address`
-     + `BACnet_IP_UDP_Port` and fails if no BDT entry matches it.
+- **Device renamed** from the placeholder "Rainbow" to "Chipkin Example B-BBMD",
+  so examples in this series can be told apart on one network. Sub-object names
+  are unchanged.
+- **This device's own BDT entry is two-hop (255.255.255.255)**, not the subnet
+  mask, so Forwarded-NPDUs from peers are re-broadcast on the local subnet
+  (Annex J.4.5).
+- **Two BBMDs on one IP subnet** now pass a peer's Forwarded-NPDU to their foreign devices.
+- The unreachable placeholder peers (192.0.2.10 and 192.0.2.20) are gone. The
+  table holds this device plus the `--bdt` peers, and is printed before the
+  `ready` line.
+- **`BACnet_IP_Mode` is set by the stack.** The three BBMD Network Port properties
+  are enabled when the BBMD is set up.
+- **Protocol_Revision is 30** (docs said 24). `Application_Software_Version`
+  and `Firmware_Revision` now report the running build and linked stack version
+  instead of a fixed "1.0.0".
+- **Build**: the documented and released build compiles the stack from source
+  with two commands (`cmake -B build -S .`, `cmake --build build --config Release`)
+  on every platform. The prebuilt static library step is gone.
+- **Documentation**: README is now this example only; configuration guidance
+  and troubleshooting moved to a new `TUTORIAL.md`; a new `docs/PICS.md` lists
+  the objects and properties.
+- Vendored `common/` updated to 3.4.0 (see `common/CHANGELOG.md`).
 
-  Either mistake produces the same unhelpful pair of errors:
-  `Broadcast Distribution Table is not configured with host device entry` /
-  `Failed to UpdateHostBDTIndex, aborting BBMD setup`.
-- Deliberately **not** implemented, because B-BBMD does not require them:
-  ReadPropertyMultiple, SubscribeCOV, alarms/events, scheduling, trending.
-- A true end-to-end NM-BBMDC-B test needs **two subnets and two BBMDs**, which is
-  inherent to the profile and beyond a single-host example.
-- Verified against **CAS BACnet Stack 6.0.0.0** at **Protocol_Revision 24** (the
-  stack default). Built and run on Windows (MSVC 2022, C++17): the device starts,
-  registers all eight objects, configures the BBMD, reads its BDT back with itself
-  as entry [0], and broadcasts its I-Am.
+### Compatibility
 
-[1.0.0]: https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP/commits/llm-auto-2026-july
+- Peers are now given with `--bdt`; the built-in placeholder peers no longer exist.
+
+## [1.1.0] - 2026-09-15
+
+First tagged release: a B-BBMD (BACnet Broadcast Management Device) example. It is
+the B-ASC example plus the BBMD function: Network Port 1 reports `BACnet_IP_Mode`
+= `bbmd`, a seeded Broadcast Distribution Table lists the peer BBMDs, and the
+stack handles forwarding, table reads and foreign-device registration. Built on
+CAS BACnet Stack 6.x (abd4cee1, reports 6.0.21).
+
+### Changed
+
+- The released build links a prebuilt static stack library
+  (`tools/build-stack-static.sh`, `-DCAS_BACNET_STACK_LINK=STATIC`); see the
+  README's "Link mode" section.
+- Updated for the 6.0.21 stack API (network port and BDT function signatures;
+  Get callbacks can name a specific BACnet error).
+- Vendored `common/` updated to 2.1.0.
+
+### Documentation
+
+- README documents two API traps: a BDT entry address is 6 octets (IP and UDP
+  port), and the BDT, including this device's own entry, must be filled in before
+  the BBMD is enabled.

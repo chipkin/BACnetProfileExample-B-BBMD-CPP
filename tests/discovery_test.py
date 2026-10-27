@@ -3,7 +3,7 @@
 # Public-domain example code (CC0) - see ../LICENSE.
 """B-BBMD discovery: read every property the BBMD says it has, the way a client does.
 
-    python3 tests/discovery_test.py [--exe build/BACnetExampleBBBMD] [--port 47900]
+    python3 tests/discovery_test.py [--exe build/BACnetExampleBBBMD] [--port 47837]
 
 What a BACnet client such as Chipkin BACnet Explorer does when it discovers a device,
 done over the wire from outside the example:
@@ -51,6 +51,13 @@ EXPECTED_OBJECTS = [DEVICE,
                     (wiretest.OBJECT_TYPE_BINARY_OUTPUT, 1),         # "Fuchsia"
                     (OBJECT_TYPE_MULTI_STATE_OUTPUT, 1)]             # "Indigo"
 
+# Database_Revision (cl. 12.11): the stack starts it at 0 and adds 1 for each object the
+# example adds at start-up - the Device and the seven objects above - and nothing creates,
+# deletes or renames an object afterwards, so it reads 8 for the life of the process, in
+# either run mode (docs/PICS.md).
+PROPERTY_DATABASE_REVISION = 155
+EXPECTED_DATABASE_REVISION = len(EXPECTED_OBJECTS)
+
 # The four properties cl. 12.1.1.4.1 says Property_List does not contain.
 PROPERTY_OBJECT_TYPE = 79
 NOT_IN_PROPERTY_LIST = [wiretest.PROPERTY_OBJECT_IDENTIFIER, wiretest.PROPERTY_OBJECT_NAME,
@@ -76,8 +83,8 @@ def parser():
     arguments = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     arguments.add_argument("--exe", default=str(wiretest.default_exe(REPOSITORY, "BACnetExampleBBBMD")),
                            help="path to BACnetExampleBBBMD (default: build/BACnetExampleBBBMD)")
-    arguments.add_argument("--port", type=int, default=47900,
-                           help="the BBMD's UDP port (default 47900)")
+    arguments.add_argument("--port", type=int, default=47837,
+                           help="the BBMD's UDP port (default 47837)")
     return arguments
 
 
@@ -136,6 +143,11 @@ def main():
         record(f"Device Object_List names exactly the {len(EXPECTED_OBJECTS)} objects main.cpp creates",
                sorted(object_list) == sorted(EXPECTED_OBJECTS),
                f"{len(object_list)} objects" if is_value(object_list_answer) else outcome(object_list_answer))
+
+        database_revision = client.read_property(args.port, *DEVICE, PROPERTY_DATABASE_REVISION, timeout=2.0)
+        record(f"Device Database_Revision reads {EXPECTED_DATABASE_REVISION}, one per object added at start-up "
+               "(docs/PICS.md)", is_value(database_revision) and database_revision.value == EXPECTED_DATABASE_REVISION,
+               outcome(database_revision))
 
         reads = 0
         unreadable = {}

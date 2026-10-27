@@ -3,7 +3,7 @@
 # Public-domain example code (CC0) - see ../LICENSE.
 """Run every B-BBMD Wire Test, one after another, and report one result.
 
-    python3 tests/run_wire_tests.py [--exe build/BACnetExampleBBBMD] [--port 47900]
+    python3 tests/run_wire_tests.py [--exe build/BACnetExampleBBBMD] [--port 47837]
 
 Exit code 0 = every check in every script passed. [KNOWN GAP] lines are reported but
 do not fail the run (TODO.md). failure_modes_test.py waits out a foreign device's
@@ -16,7 +16,7 @@ from pathlib import Path
 import bbmd_setup as setup
 
 TESTS = Path(__file__).resolve().parent
-SCRIPTS = ["discovery_test.py", "forwarding_test.py", "tables_test.py", "failure_modes_test.py"]
+SCRIPTS = ["discovery_test.py", "configuration_test.py", "forwarding_test.py", "tables_test.py", "failure_modes_test.py"]
 
 
 def main():
