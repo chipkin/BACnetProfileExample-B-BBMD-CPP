@@ -142,7 +142,7 @@ object-name: "Chipkin Example B-BBMD"
 object-type: DEVICE
 apdu-segment-timeout: 5000
 apdu-timeout: 10000
-application-software-version: "1.2.0"
+application-software-version: "1.3.1"
 description: "Chipkin CAS BACnet Stack example - B-BBMD (BACnet Broadcast Management Device) profile. Demonstrates NM-BBMDC-B: forwards BACnet/IP broadcasts between subnets via a Broadcast Distribution Table and accepts foreign-device registrations."
 device-address-binding: ?
 firmware-revision: "6.0.23.0"

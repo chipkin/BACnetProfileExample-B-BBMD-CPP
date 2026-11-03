@@ -18,7 +18,7 @@ see [README.md](../README.md).
 | **Vendor Identifier** | 389 |
 | **Product Name** | CAS BACnet Stack Example - B-BBMD |
 | **Product Model Number** | CAS BACnet Stack Example - B-BBMD |
-| **Application Software Version** | 1.3.0 (`APP_VERSION` in `main.cpp`) |
+| **Application Software Version** | 1.3.1 (`APP_VERSION` in `main.cpp`) |
 | **Firmware Revision** | the linked CAS BACnet Stack version (6.0.23.0 at this Stack Pin) |
 | **BACnet Protocol Version** | 1 |
 | **BACnet Protocol Revision** | 30 |
@@ -95,7 +95,7 @@ SubscribeCOV, and any alarm/event or scheduling service.
 
 Segmentation is **supported in both directions**
 (`Segmentation_Supported` = `segmented-both`), by the stack: at `6.x` @
-`69b6249f` the customer build compiles `STACK_OPTION_SEGMENTATION` in (stack
+`1e7dffe2b` the customer build compiles `STACK_OPTION_SEGMENTATION` in (stack
 #2992), and this example keeps the stack's defaults - `Max_Segments_Accepted`
 16 and `APDU_Segment_Timeout` 5000 ms. Table 12-13 footnote 1: "These
 properties are required if, and shall be present only if, segmentation of any

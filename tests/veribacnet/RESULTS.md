@@ -10,8 +10,8 @@ addresses.
 
 | | |
 |---|---|
-| Date | 2026-10-27 |
-| Example | BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0 (`common/` 3.5.0), CAS BACnet Stack `6.x` @ `69b6249f` (6.0.23.0) |
+| Date | 2026-10-30 |
+| Example | BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.3.0 (`common/` 3.5.0), CAS BACnet Stack `6.x` @ `69b6249f` (6.0.23.0) |
 | Mode | **BBMD mode** (the default: started without `--no-bbmd`, a BBMD with no peers in its Broadcast Distribution Table) |
 | Profile | B-BBMD (BACnet Broadcast Management Device) |
 | Transport | BACnet/IP, UDP port 47837 |
@@ -99,8 +99,8 @@ source constant, empty), and it has no command-line option for one.
 
 | | |
 |---|---|
-| Date | 2026-10-27 |
-| Example | BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.2.0 (`common/` 3.5.0), CAS BACnet Stack `6.x` @ `69b6249f` (6.0.23.0) |
+| Date | 2026-10-30 |
+| Example | BACnet B-BBMD (BACnet Broadcast Management Device) Example - C++ v1.3.0 (`common/` 3.5.0), CAS BACnet Stack `6.x` @ `69b6249f` (6.0.23.0) |
 | Mode | **started with `--no-bbmd`** (a plain BACnet/IP device, not a BBMD) |
 | Profile | B-BBMD (BACnet Broadcast Management Device) |
 | Transport | BACnet/IP, UDP port 47837 |

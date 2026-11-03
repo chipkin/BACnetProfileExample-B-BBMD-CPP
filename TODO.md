@@ -7,8 +7,8 @@ None of them stops the Profile Function: `tests/forwarding_test.py` proves a Who
 a foreign device registered with one BBMD reaches a foreign device registered with
 another, and the second BBMD's I-Am comes back.
 
-Verified 2026-10-26 against the pinned stack, `6.x` @ `69b6249f` (6.0.23), with
-`common/` 3.5.0. `common/` 3.4.0 closed the two-hop local re-broadcast gap (stack
+Verified against the pinned stack, `6.x` @ `1e7dffe2b` (6.0.23), with `common/` 3.6.1:
+the Wire Tests passed on Windows on 2026-11-01. `common/` 3.4.0 closed the two-hop local re-broadcast gap (stack
 [#3933](https://github.com/chipkin/cas-bacnet-stack/issues/3933)): a broadcast the stack
 addresses to this BBMD's own B/IP address now goes to the subnet broadcast, and
 `forwarding_test.py` counts it. The Stack Pin move to `29b83de6` closed the BDT-write gap
